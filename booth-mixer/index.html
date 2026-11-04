@@ -1276,7 +1276,7 @@ function applyKeine(jump){
   ramp(K.gate.gain, on ? 1 : 0);
   ramp(K.fb.gain, keine.fb * (analog ? 1.12 : 1.0));   // analog can self-oscillate into the saturator
   ramp(K.wet.gain, keine.fx * 1.2);
-  ramp(K.dry.gain, keine.wetOnly ? 0 : 1);
+  ramp(K.dry.gain, keine.wetOnly && on ? 0 : 1);   // off = true bypass, even in 100% wet
   K.sat.curve = satCurve(keine.mode);
   ramp(K.tone.frequency, analog ? 3600 : 18000);
   ramp(K.hp.frequency, analog ? 90 : 20);
