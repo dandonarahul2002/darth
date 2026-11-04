@@ -15,7 +15,7 @@ npx --yes @electron/packager@18.3.6 . "$APP" \
   --icon=icon.icns --app-bundle-id=com.rahuldandona.boothmixer \
   --app-category-type=public.app-category.music \
   --extend-info=extra.plist --out=dist --overwrite \
-  --ignore='^/dist' --ignore='^/build\.sh' --ignore='\.plist$' --ignore='\.icns$' --ignore='\.dmg$'
+  --ignore='^/dist' --ignore='^/build\.sh' --ignore='\.plist$' --ignore='\.icns$' --ignore='\.dmg$'  --ignore="^/dmg-stage"
 
 BUNDLE="dist/$APP-darwin-arm64/$APP.app"
 
@@ -32,6 +32,7 @@ hdiutil create -volname "$APP" -srcfolder dmg-stage -ov -format UDZO "Booth-Mixe
 rm -rf dmg-stage
 echo "  $(pwd)/Booth-Mixer.dmg"
 
+osascript -e 'quit app "Booth Mixer"' 2>/dev/null || true
 echo "→ Installing to /Applications…"
 rm -rf "/Applications/$APP.app"
 cp -R "$BUNDLE" /Applications/

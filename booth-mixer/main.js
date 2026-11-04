@@ -6,7 +6,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 920, minWidth: 440, minHeight: 520,
-    backgroundColor: '#101216', title: 'Booth Mixer',
+    backgroundColor: '#121211', title: 'Booth Mixer',
     webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false }
   });
   win.loadFile('index.html');
