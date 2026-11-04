@@ -201,6 +201,11 @@ canvas#spec{width:100%;height:150px;display:block;background:var(--well);border-
 .fx-read{color:var(--dim);font-family:var(--f-mono);font-size:11px;font-variant-numeric:tabular-nums}
 /* reserved slot for punch-in FX pads (populated by later work); collapses while empty */
 .punch-fx:empty{display:none}
+#tap{font-variant-numeric:tabular-nums;min-width:84px}
+#tap.tapped{animation:tapflash .18s ease-out}
+@keyframes tapflash{from{background:var(--ink);color:var(--bg)}}
+@media (prefers-reduced-motion:reduce){#tap.tapped{animation:none}}
+
 /* keinedelay */
 .keine{--c:var(--ink);padding:16px 18px;display:grid;gap:14px}
 .keine-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
@@ -966,7 +971,10 @@ let taps = [];
 function tap(){
   const now = performance.now(); taps = taps.filter(t => now - t < 2500); taps.push(now);
   if(taps.length >= 3){ const iv = (taps[taps.length-1] - taps[0]) / (taps.length - 1); state.tapBpm = clamp(60000 / iv, 60, 200); }
-  $("#tap").firstChild.nodeValue = state.tapBpm ? `${state.tapBpm.toFixed(1)}` : `Tap ${taps.length}`;
+  const tb = $("#tap");
+  tb.firstChild.nodeValue = taps.length >= 3 ? `${state.tapBpm.toFixed(1)} BPM` : `Tap ${taps.length}…`;
+  tb.classList.remove("tapped"); void tb.offsetWidth; tb.classList.add("tapped");
+  tb.title = state.tapBpm ? `Tempo ${state.tapBpm.toFixed(1)} BPM: sets Beat FX and punch-in timing. Tap 3+ times to change.` : "Tap 3+ times on the beat to set the tempo";
   applyFx();
 }
 $("#tap").addEventListener("click", tap);
