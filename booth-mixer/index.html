@@ -201,6 +201,31 @@ canvas#spec{width:100%;height:150px;display:block;background:var(--well);border-
 .fx-read{color:var(--dim);font-family:var(--f-mono);font-size:11px;font-variant-numeric:tabular-nums}
 /* reserved slot for punch-in FX pads (populated by later work); collapses while empty */
 .punch-fx:empty{display:none}
+/* keinedelay */
+.keine{--c:var(--ink);padding:16px 18px;display:grid;gap:14px}
+.keine-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px 16px;flex-wrap:wrap}
+.keine-title{font-family:var(--f-mono);font-size:15px;font-weight:500;letter-spacing:-.01em;color:var(--ink);margin-right:10px}
+.keine-sub{font-size:11px;color:var(--faint)}
+.keine-read{font-family:var(--f-mono);font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
+.keine-body{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:18px 28px;align-items:center}
+.keine-knobs{display:flex;gap:14px;flex-wrap:wrap}
+.kcell{display:grid;justify-items:center;gap:4px}
+.keine-sw{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.keine-toggles{display:flex;gap:6px;flex-wrap:wrap}
+.keine-arcade{display:flex;gap:10px;flex-wrap:wrap}
+.arcade{width:64px;height:64px;border-radius:50%;border:0;background:var(--well);color:var(--ink);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;cursor:pointer;font-family:var(--f-label);font-size:12px;touch-action:none;user-select:none;-webkit-user-select:none;box-shadow:inset 0 0 0 1.5px var(--edge);transition:background .08s,color .08s,transform .05s,box-shadow .08s}
+.arcade kbd{font-family:var(--f-mono);font-size:9px;color:var(--faint);margin:0}
+.arcade:hover{background:var(--btn-hover)}
+.arcade:active{transform:scale(.96)}
+.arcade[aria-pressed="true"]{background:var(--ink);color:var(--bg)}
+.arcade[aria-pressed="true"] kbd{color:var(--bg)}
+.arcade[data-state="rec"]{background:var(--led-r);color:var(--on-accent);box-shadow:none}
+.arcade[data-state="rec"] kbd,.arcade[data-state="play"] kbd{color:inherit}
+.arcade[data-state="play"]{background:var(--deck-b);color:var(--on-accent);box-shadow:none}
+.keine.on .keine-title{color:var(--led-r)}
+@media (prefers-reduced-motion:reduce){.arcade{transition:none}.arcade:active{transform:none}}
+@media (max-width:900px){.keine-body{grid-template-columns:1fr}}
+
 .punch-fx{display:grid;gap:10px;border-top:1px solid var(--edge);padding-top:14px}
 .punch-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
 .punch-hint{font-size:11px;color:var(--faint)}
@@ -328,6 +353,8 @@ canvas#spec{width:100%;height:150px;display:block;background:var(--well);border-
     <span><b>Kills</b> Q W E / I O P</span>
     <span><b>Play</b> Z / M</span>
     <span><b>FX</b> F · <b>Tap</b> T</span>
+    <span><b>Punch-in</b> hold 1–0</span>
+    <span><b>keinedelay</b> hold K · L on · Y tap · U loop</span>
     <span><b>Tracks</b> drop a file on a deck</span>
   </footer>
 </div>
@@ -1073,7 +1100,8 @@ function buildPunchChain(){
   G.smashComp.threshold.value = -24; G.smashComp.ratio.value = 6; G.smashComp.knee.value = 6;
   G.smashComp.attack.value = 0.008; G.smashComp.release.value = 0.15;
   G.smashMake = ctx.createGain();
-  G.duck.connect(G.smashDry); G.duck.connect(G.smashDrive);
+  const keineOut = buildKeine(G.duck);
+  keineOut.connect(G.smashDry); keineOut.connect(G.smashDrive);
   G.smashDrive.connect(G.smashComp); G.smashComp.connect(G.smashMake); G.smashMake.connect(G.smashWet);
   G.smashDry.connect(G.limiter); G.smashWet.connect(G.limiter);
   applySmash();
@@ -1186,6 +1214,201 @@ function buildPunchUI(){
   window.addEventListener("blur", () => { for(const i of [...punch.held.keys()]) releasePad(i); });
 }
 
+/* ---------------- keinedelay (TEILE Elektronik Teil1 style tape delay + looper) ---------------- */
+// Signal: in → dry ───────────────────────────────┐
+//         in → punch gate → [delay ⇄ tone → sat → feedback] → wet ─┼→ out
+//         in → loop gate → [12 s loop delay ⇄ loop feedback] → loop out ┘
+const keine = {
+  fx:0.5, fb:0.45, time:0.55, speed:0.35, range:"full", mode:"analog", lowNoise:true, wetOnly:false,
+  latched:false, punchHeld:false, loop:"idle", loopStart:0, taps:[]
+};
+const KEINE_RANGE = {fast:[0.001, 0.05], full:[0.001, 3.2]};
+function keineSeconds(v){ const [a, b] = KEINE_RANGE[keine.range]; return a * Math.pow(b / a, v); }
+function fmtMs(s){ return s >= 1 ? `${s.toFixed(2)} s` : `${(s * 1000).toFixed(s < 0.01 ? 1 : 0)} ms`; }
+function satCurve(mode){
+  const n = 2048, c = new Float32Array(n);
+  for(let i = 0; i < n; i++){ const x = i / (n - 1) * 2 - 1;
+    c[i] = mode === "analog" ? Math.tanh(1.5 * x) / 1.5 : Math.max(-1, Math.min(1, x)); }   // unity gain for quiet signals
+  return c;
+}
+
+function buildKeine(src){
+  const K = G.keine = {};
+  K.out = ctx.createGain();
+  K.dry = ctx.createGain(); src.connect(K.dry); K.dry.connect(K.out);
+  // tape delay
+  K.gate = ctx.createGain(); K.gate.gain.value = 0; src.connect(K.gate);
+  K.delay = ctx.createDelay(3.4); K.delay.delayTime.value = keineSeconds(keine.time);
+  K.tone = biq("lowpass", 18000, 0.5); K.hp = biq("highpass", 40, 0.5);
+  K.sat = ctx.createWaveShaper(); K.sat.oversample = "2x";
+  K.fb = ctx.createGain(); K.wet = ctx.createGain();
+  K.gate.connect(K.delay); K.delay.connect(K.tone); K.tone.connect(K.hp); K.hp.connect(K.sat);
+  K.sat.connect(K.fb); K.fb.connect(K.delay); K.sat.connect(K.wet); K.wet.connect(K.out);
+  // wow & flutter (analog mode) modulate the tape speed
+  K.wow = ctx.createOscillator(); K.wow.frequency.value = 0.55; K.wowG = ctx.createGain();
+  K.flut = ctx.createOscillator(); K.flut.frequency.value = 6.3; K.flutG = ctx.createGain();
+  K.wow.connect(K.wowG); K.flut.connect(K.flutG); K.wowG.connect(K.delay.delayTime); K.flutG.connect(K.delay.delayTime);
+  K.wow.start(); K.flut.start();
+  // tape hiss into the loop (analog mode, low-noise off)
+  const nb = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate), d = nb.getChannelData(0);
+  for(let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  K.hiss = ctx.createBufferSource(); K.hiss.buffer = nb; K.hiss.loop = true;
+  K.hissF = biq("highpass", 3000, 0.5); K.hissG = ctx.createGain(); K.hissG.gain.value = 0;
+  K.hiss.connect(K.hissF); K.hissF.connect(K.hissG); K.hissG.connect(K.delay); K.hiss.start();
+  // 12 s looper
+  K.loopIn = ctx.createGain(); K.loopIn.gain.value = 0; src.connect(K.loopIn);
+  K.loopDelay = ctx.createDelay(12.5); K.loopDelay.delayTime.value = 12;
+  K.loopFb = ctx.createGain(); K.loopFb.gain.value = 0; K.loopOut = ctx.createGain(); K.loopOut.gain.value = 0;
+  K.loopIn.connect(K.loopDelay); K.loopDelay.connect(K.loopFb); K.loopFb.connect(K.loopDelay);
+  K.loopDelay.connect(K.loopOut); K.loopOut.connect(K.out);
+  applyKeine(true);
+  return K.out;
+}
+
+function applyKeine(jump){
+  renderKeineUI();
+  if(!ctx || !G.keine) return;
+  const K = G.keine, now = ctx.currentTime, analog = keine.mode === "analog", on = keine.latched || keine.punchHeld;
+  // Time: the tape speeds up / slows down to the new length, so echoes bend in pitch.
+  const t = keineSeconds(keine.time), glide = 0.02 + Math.pow(1 - keine.speed, 2) * 1.6;
+  K.delay.delayTime.cancelScheduledValues(now);
+  if(jump) K.delay.delayTime.setValueAtTime(t, now); else K.delay.delayTime.setTargetAtTime(t, now, glide / 3);
+  ramp(K.gate.gain, on ? 1 : 0);
+  ramp(K.fb.gain, keine.fb * (analog ? 1.12 : 1.0));   // analog can self-oscillate into the saturator
+  ramp(K.wet.gain, keine.fx * 1.2);
+  ramp(K.dry.gain, keine.wetOnly ? 0 : 1);
+  K.sat.curve = satCurve(keine.mode);
+  ramp(K.tone.frequency, analog ? 3600 : 18000);
+  ramp(K.hp.frequency, analog ? 90 : 20);
+  const depth = analog ? Math.min(0.004, t * 0.004) : 0;
+  ramp(K.wowG.gain, depth); ramp(K.flutG.gain, depth * 0.15);
+  ramp(K.hissG.gain, analog && !keine.lowNoise ? 0.004 : 0);
+}
+
+function keineLoop(){
+  initAudio();
+  const K = G.keine; if(!K) return;
+  const now = ctx.currentTime;
+  if(keine.loop === "idle"){
+    K.loopOut.gain.setTargetAtTime(0, now, 0.01); K.loopFb.gain.setValueAtTime(0, now);
+    K.loopDelay.delayTime.setValueAtTime(12, now);
+    K.loopIn.gain.setTargetAtTime(1, now, 0.003);
+    keine.loop = "rec"; keine.loopStart = now;
+    keine.loopTimer = setTimeout(() => { if(keine.loop === "rec") keineLoop(); }, 12000);
+  } else if(keine.loop === "rec"){
+    clearTimeout(keine.loopTimer);
+    const len = Math.max(0.05, Math.min(12, now - keine.loopStart));
+    K.loopDelay.delayTime.setValueAtTime(len, now);
+    K.loopFb.gain.setValueAtTime(1, now); K.loopIn.gain.setTargetAtTime(0, now, 0.003);
+    K.loopOut.gain.setTargetAtTime(1, now, 0.005);
+    keine.loop = "play"; keine.loopLen = len;
+  } else {
+    K.loopOut.gain.setTargetAtTime(0, now, 0.02); K.loopFb.gain.setTargetAtTime(0, now + 0.08, 0.01);
+    keine.loop = "idle";
+  }
+  renderKeineUI();
+}
+
+function keineTap(){
+  const now = performance.now(); keine.taps = keine.taps.filter(x => now - x < 3500); keine.taps.push(now);
+  if(keine.taps.length >= 2){
+    const iv = (keine.taps[keine.taps.length - 1] - keine.taps[0]) / (keine.taps.length - 1) / 1000;
+    if(iv > KEINE_RANGE.fast[1]) keine.range = "full";
+    const [a, b] = KEINE_RANGE[keine.range], s = Math.min(b, Math.max(a, iv));
+    keine.time = Math.log(s / a) / Math.log(b / a);
+    knobs.kTime && knobs.kTime.set(keine.time, false);
+    syncSeg("#kRange", keine.range);
+  }
+  applyKeine(false);
+}
+
+function syncSeg(sel, v){ document.querySelectorAll(`${sel} button`).forEach(b => b.setAttribute("aria-pressed", b.dataset.v === v)); }
+
+function renderKeineUI(){
+  const host = document.getElementById("keine"); if(!host) return;
+  const on = keine.latched || keine.punchHeld;
+  document.getElementById("kPunch").setAttribute("aria-pressed", keine.punchHeld);
+  document.getElementById("kLatch").setAttribute("aria-pressed", keine.latched);
+  document.getElementById("kWet").setAttribute("aria-pressed", keine.wetOnly);
+  document.getElementById("kNoise").setAttribute("aria-pressed", keine.lowNoise);
+  document.getElementById("kNoise").disabled = keine.mode !== "analog";
+  host.classList.toggle("on", on);
+  const lb = document.getElementById("kLoop");
+  lb.dataset.state = keine.loop;
+  lb.querySelector(".arc-name").textContent = {idle:"Loop", rec:"Recording", play:"Playing"}[keine.loop];
+  const read = document.getElementById("kRead");
+  const t = keineSeconds(keine.time), bpm = currentBpm(), beats = t / (60 / bpm);
+  read.textContent = `${fmtMs(t)} · ${beats >= 0.1 ? beats.toFixed(2) + " beats" : "comb"} · ${keine.mode}${keine.loop === "play" ? ` · loop ${keine.loopLen.toFixed(2)} s` : ""}`;
+}
+
+function buildKeineUI(){
+  const sec = document.createElement("section");
+  sec.className = "keine chassis"; sec.id = "keine"; sec.setAttribute("aria-label", "keinedelay");
+  sec.innerHTML = `
+    <header class="keine-head">
+      <div><span class="keine-title">keinedelay</span><span class="keine-sub">tape delay + 12 s looper · after TEILE Elektronik Teil1</span></div>
+      <span class="keine-read" id="kRead"></span>
+    </header>
+    <div class="keine-body">
+      <div class="keine-knobs">
+        <div class="kcell"><span class="lbl">FX</span><div class="knob" id="k-kFx"></div></div>
+        <div class="kcell"><span class="lbl">Feedback</span><div class="knob" id="k-kFb"></div></div>
+        <div class="kcell"><span class="lbl">Time</span><div class="knob" id="k-kTime"></div></div>
+        <div class="kcell"><span class="lbl">Speed</span><div class="knob" id="k-kSpeed"></div></div>
+      </div>
+      <div class="keine-sw">
+        <div class="seg" id="kRange"><button data-v="fast" aria-pressed="false">Fast</button><button data-v="full" aria-pressed="true">Full</button></div>
+        <div class="seg" id="kMode"><button data-v="analog" aria-pressed="true">Analog</button><button data-v="digital" aria-pressed="false">Digital</button></div>
+        <div class="keine-toggles">
+          <button class="btn toggle" id="kNoise" aria-pressed="true">Low noise</button>
+          <button class="btn toggle" id="kWet" aria-pressed="false">100% wet</button>
+        </div>
+      </div>
+      <div class="keine-arcade">
+        <button class="arcade" id="kPunch" aria-pressed="false"><span class="arc-name">Punch</span><kbd>hold K</kbd></button>
+        <button class="arcade" id="kLatch" aria-pressed="false"><span class="arc-name">On</span><kbd>L</kbd></button>
+        <button class="arcade" id="kTap"><span class="arc-name">Tap</span><kbd>Y</kbd></button>
+        <button class="arcade" id="kLoop" data-state="idle"><span class="arc-name">Loop</span><kbd>U</kbd></button>
+      </div>
+    </div>`;
+  const mixer = document.getElementById("mixer");
+  mixer.parentNode.insertBefore(sec, mixer.nextSibling);
+
+  knobs.kFx = knob(document.getElementById("k-kFx"), {min:0, max:1, def:0.5, value:keine.fx, step:0.01, origin:0, label:"keinedelay FX amount",
+    fmt:v => `${Math.round(v * 100)}%`, onChange:v => { keine.fx = v; applyKeine(false); }});
+  knobs.kFb = knob(document.getElementById("k-kFb"), {min:0, max:1, def:0.45, value:keine.fb, step:0.005, origin:0, label:"keinedelay feedback",
+    fmt:v => v > 0.92 && keine.mode === "analog" ? "SELF-OSC" : `${Math.round(v * 100)}%`, onChange:v => { keine.fb = v; applyKeine(false); }});
+  knobs.kTime = knob(document.getElementById("k-kTime"), {min:0, max:1, def:0.55, value:keine.time, step:0.002, origin:0, label:"keinedelay time",
+    fmt:v => fmtMs(keineSeconds(v)), onChange:v => { keine.time = v; applyKeine(false); }});
+  knobs.kSpeed = knob(document.getElementById("k-kSpeed"), {min:0, max:1, def:0.35, value:keine.speed, step:0.01, origin:0, label:"keinedelay tape speed",
+    fmt:v => v > 0.97 ? "JUMP" : `${(0.02 + Math.pow(1 - v, 2) * 1.6).toFixed(2)} s`, onChange:v => { keine.speed = v; applyKeine(false); }});
+
+  seg("#kRange", v => { keine.range = v; knobs.kTime.render(); applyKeine(false); });
+  seg("#kMode", v => { keine.mode = v; knobs.kFb.render(); applyKeine(false); });
+  document.getElementById("kNoise").addEventListener("click", () => { keine.lowNoise = !keine.lowNoise; applyKeine(false); });
+  document.getElementById("kWet").addEventListener("click", () => { keine.wetOnly = !keine.wetOnly; applyKeine(false); });
+  const punchOn = () => { initAudio(); keine.punchHeld = true; applyKeine(false); };
+  const punchOff = () => { if(!keine.punchHeld) return; keine.punchHeld = false; applyKeine(false); };
+  const pb = document.getElementById("kPunch");
+  pb.addEventListener("pointerdown", e => { pb.setPointerCapture(e.pointerId); punchOn(); });
+  ["pointerup", "pointercancel", "lostpointercapture"].forEach(ev => pb.addEventListener(ev, punchOff));
+  document.getElementById("kLatch").addEventListener("click", () => { initAudio(); keine.latched = !keine.latched; applyKeine(false); });
+  document.getElementById("kTap").addEventListener("click", keineTap);
+  document.getElementById("kLoop").addEventListener("click", keineLoop);
+  document.addEventListener("keydown", e => {
+    if(e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+    const t = e.target; if(t && (t.tagName === "SELECT" || (t.tagName === "INPUT" && t.type !== "range"))) return;
+    const k = e.key.toLowerCase();
+    if(k === "k"){ e.preventDefault(); punchOn(); }
+    else if(k === "l"){ e.preventDefault(); initAudio(); keine.latched = !keine.latched; applyKeine(false); }
+    else if(k === "y"){ e.preventDefault(); keineTap(); }
+    else if(k === "u"){ e.preventDefault(); keineLoop(); }
+  });
+  document.addEventListener("keyup", e => { if(e.key.toLowerCase() === "k") punchOff(); });
+  window.addEventListener("blur", punchOff);
+  renderKeineUI();
+}
+
 /* ---------------- drawing ---------------- */
 const COL = {};
 function readColors(){ ["--deck-a","--deck-b","--ink","--dim","--faint","--well","--edge","--led-r","--panel-hi"].forEach(n => COL[n] = css(n)); }
@@ -1296,6 +1519,7 @@ if(window.matchMedia){ const mq = matchMedia("(prefers-color-scheme: light)"), o
   mq.addEventListener ? mq.addEventListener("change", onScheme) : mq.addListener && mq.addListener(onScheme); }
 if(document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
 buildPunchUI();
+buildKeineUI();
 requestAnimationFrame(frame);
 (async () => {
   try{
