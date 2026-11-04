@@ -1,0 +1,1011 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}[hidden]{display:none!important}</style></head><body>
+<title>Booth Mixer</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: two decks on top; below them a hardware mixer face — channel strip A | spectrum, master, beat FX, crossfader | channel strip B. Deliberately single dark theme (it's a piece of gear). */
+:root{
+  --bg:#101216; --panel:#1c2027; --panel-hi:#252a32; --well:#0c0e11; --edge:#333944;
+  --ink:#ebe6da; --dim:#8f959e; --faint:#4b515b; --cap-hi:#5b626d; --cap-lo:#2b3037;
+  --deck-a:#ff9d47; --deck-b:#5cc6e0;
+  --led-g:#82d67c; --led-y:#f0c04c; --led-r:#ff5a4f; --led-off:#22262d;
+  --hl:rgba(255,255,255,.06); --shadow:rgba(0,0,0,.5); --glow-a:rgba(255,157,71,.35); --glow-b:rgba(92,198,224,.35); --glow-r:rgba(255,90,79,.4);
+  --f-label:"Barlow Condensed","Arial Narrow",system-ui,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{background:var(--bg);color:var(--ink)}
+body{font-family:var(--f-mono);font-size:13px;line-height:1.45}
+.wrap{max-width:1200px;margin:0 auto;padding-block:18px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+.lbl{font-family:var(--f-label);text-transform:uppercase;letter-spacing:.12em;font-size:12px;font-weight:600;color:var(--dim)}
+.chassis{background:linear-gradient(180deg,var(--panel-hi),var(--panel) 140px);border:1px solid var(--edge);border-radius:10px;box-shadow:inset 0 1px 0 var(--hl),0 10px 28px var(--shadow)}
+
+/* header */
+.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 20px}
+.brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{margin:0;font-family:var(--f-label);font-weight:700;font-size:30px;letter-spacing:.06em;text-transform:uppercase;line-height:1}
+.plate{font-family:var(--f-label);font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);border:1px solid var(--edge);border-radius:3px;padding:1px 7px}
+.engine{display:flex;align-items:center;gap:8px;color:var(--dim);font-size:12px}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--led-off);box-shadow:inset 0 0 0 1px var(--edge)}
+.dot.on{background:var(--led-g);box-shadow:0 0 8px var(--led-g)}
+
+/* decks */
+.decks{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.deck{padding:14px;display:grid;gap:10px;min-width:0;position:relative}
+.deck.drag{outline:2px dashed var(--c);outline-offset:-6px}
+.deck-head{display:flex;align-items:center;gap:12px;min-width:0}
+.deck-tag{font-family:var(--f-label);font-weight:700;font-size:34px;line-height:1;color:var(--c);width:26px;text-align:center}
+.deck-title{min-width:0;flex:1}
+.track{font-family:var(--f-label);font-size:19px;font-weight:600;letter-spacing:.03em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.meta{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+.time{font-size:18px;font-variant-numeric:tabular-nums;color:var(--c);text-align:right}
+.time small{display:block;color:var(--dim);font-size:11px}
+canvas.wave{width:100%;height:76px;display:block;background:var(--well);border-radius:6px;border:1px solid var(--edge);cursor:pointer}
+.transport,.source{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.tempo{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0}
+.tempo input{width:120px;accent-color:var(--c)}
+.tempo output{font-variant-numeric:tabular-nums;min-width:58px;text-align:right;color:var(--ink)}
+.status{margin:0;color:var(--dim);font-size:12px;min-height:18px}
+.status.warn{color:var(--led-y)}
+
+/* buttons */
+.btn,.kill,.seg button,.fx-on{font-family:var(--f-label);text-transform:uppercase;letter-spacing:.1em;font-weight:600;font-size:13px;color:var(--ink);background:linear-gradient(180deg,var(--cap-hi),var(--cap-lo));border:1px solid var(--well);border-radius:5px;padding:7px 12px;cursor:pointer;box-shadow:inset 0 1px 0 var(--hl),0 1px 0 var(--shadow);transition:background .08s,box-shadow .08s,color .08s}
+.btn:hover,.kill:hover,.seg button:hover,.fx-on:hover{filter:brightness(1.12)}
+.btn:active,.kill:active,.seg button:active,.fx-on:active{transform:translateY(1px)}
+:focus-visible{outline:2px solid var(--ink);outline-offset:2px}
+.btn.play{min-width:84px}
+.btn.play[aria-pressed="true"],.btn.toggle[aria-pressed="true"]{color:var(--well);background:var(--c);box-shadow:0 0 14px var(--glow)}
+.btn:disabled{opacity:.4;cursor:not-allowed;filter:none}
+label.btn{display:inline-block}
+kbd{font-family:var(--f-mono);font-size:10px;color:var(--dim);margin-left:6px;letter-spacing:0}
+
+/* mixer face */
+.mixer{display:grid;grid-template-columns:minmax(0,230px) minmax(0,1fr) minmax(0,230px);gap:14px;grid-template-areas:"a c b"}
+.strip{grid-area:a;padding:14px 12px;display:grid;gap:10px;align-content:start}
+.strip[data-ch="B"]{grid-area:b}
+.strip-head{display:flex;align-items:baseline;gap:8px;border-bottom:1px solid var(--edge);padding-bottom:8px}
+.ch-tag{font-family:var(--f-label);font-weight:700;font-size:22px;color:var(--c);line-height:1}
+.row{display:grid;grid-template-columns:44px 58px 1fr;align-items:center;gap:8px}
+.row.trim .knob{width:46px;height:58px}
+.eq{display:grid;gap:4px;padding:8px 0;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge)}
+.kill{padding:6px 6px;font-size:12px;justify-self:start}
+.kill[aria-pressed="true"]{background:var(--led-r);color:var(--well);box-shadow:0 0 14px var(--glow-r)}
+.kill[aria-pressed="true"] kbd{color:var(--well)}
+.filter-ends{display:flex;flex-direction:column;gap:2px;font-family:var(--f-label);letter-spacing:.1em;font-size:11px;color:var(--faint)}
+.fader-row{display:flex;justify-content:center;align-items:stretch;gap:18px;padding-top:6px}
+
+/* knobs */
+.knob{position:relative;width:58px;height:70px;touch-action:none;cursor:ns-resize;border-radius:8px;display:flex;flex-direction:column;align-items:center;user-select:none;-webkit-user-select:none}
+.knob svg{width:100%;aspect-ratio:1;display:block;max-width:100%}
+.knob .k-track{fill:none;stroke:var(--well);stroke-width:4;stroke-linecap:round}
+.knob .k-arc{fill:none;stroke:var(--c,var(--ink));stroke-width:4;stroke-linecap:round}
+.knob .k-cap{fill:var(--cap-lo);stroke:var(--cap-hi);stroke-width:1.5}
+.knob .k-ptr{stroke:var(--ink);stroke-width:2.5;stroke-linecap:round}
+.knob .k-val{font-size:10.5px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap;margin-top:-4px}
+.knob.killed .k-val{color:var(--led-r)}
+
+/* meters */
+.meter{display:flex;flex-direction:column-reverse;gap:3px;width:10px;padding:3px 0}
+.led{flex:1;min-height:6px;border-radius:2px;background:var(--led-off)}
+.led.g.on{background:var(--led-g);box-shadow:0 0 5px var(--led-g)}
+.led.y.on{background:var(--led-y);box-shadow:0 0 5px var(--led-y)}
+.led.r.on{background:var(--led-r);box-shadow:0 0 6px var(--led-r)}
+
+/* faders */
+input.fader{-webkit-appearance:none;appearance:none;writing-mode:vertical-lr;direction:rtl;width:40px;height:190px;margin:0;background:linear-gradient(var(--well),var(--well)) center/6px 100% no-repeat;cursor:pointer}
+input.fader::-webkit-slider-thumb{-webkit-appearance:none;width:36px;height:20px;border-radius:3px;background:linear-gradient(180deg,var(--cap-hi),var(--cap-lo));border:1px solid var(--well);box-shadow:inset 0 -3px 0 var(--c),0 2px 4px var(--shadow)}
+input.fader::-moz-range-thumb{width:36px;height:20px;border-radius:3px;background:linear-gradient(180deg,var(--cap-hi),var(--cap-lo));border:1px solid var(--well);box-shadow:inset 0 -3px 0 var(--c),0 2px 4px var(--shadow)}
+input.fader::-moz-range-track{background:transparent}
+input.xfader{-webkit-appearance:none;appearance:none;width:100%;height:36px;margin:0;background:linear-gradient(var(--well),var(--well)) center/100% 6px no-repeat;cursor:pointer;min-width:0}
+input.xfader::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:34px;border-radius:3px;background:linear-gradient(90deg,var(--cap-lo),var(--cap-hi),var(--cap-lo));border:1px solid var(--well);box-shadow:inset 0 0 0 1px var(--hl),0 2px 4px var(--shadow)}
+input.xfader::-moz-range-thumb{width:22px;height:34px;border-radius:3px;background:linear-gradient(90deg,var(--cap-lo),var(--cap-hi),var(--cap-lo));border:1px solid var(--well)}
+input.xfader::-moz-range-track{background:transparent}
+
+/* center */
+.center{grid-area:c;padding:14px;display:grid;gap:14px;align-content:start;min-width:0}
+.spec-wrap{position:relative}
+canvas#spec{width:100%;height:170px;display:block;background:var(--well);border:1px solid var(--edge);border-radius:6px}
+.center-row{display:grid;grid-template-columns:auto 1fr;gap:18px;align-items:start}
+.master{display:grid;gap:8px;justify-items:center;padding-right:18px;border-right:1px solid var(--edge)}
+.mstr{display:flex;gap:6px;height:150px}
+.scale{display:flex;flex-direction:column-reverse;justify-content:space-between;font-size:9.5px;color:var(--faint);text-align:right;font-variant-numeric:tabular-nums;padding:1px 0}
+.mstr .meter{width:9px}
+.mstr .chl{display:flex;flex-direction:column;align-items:center;gap:2px}
+.mstr .chl .meter{flex:1}
+.mstr .chl span{font-size:9.5px;color:var(--faint)}
+.limit{display:flex;align-items:center;gap:6px}
+.limit .dot.hot{background:var(--led-r);box-shadow:0 0 8px var(--led-r)}
+.fx{display:grid;gap:9px;min-width:0}
+.seg{display:flex;flex-wrap:wrap;gap:0}
+.seg button{border-radius:0;padding:6px 10px;font-size:12px;margin-left:-1px}
+.seg button:first-child{border-radius:5px 0 0 5px;margin-left:0}
+.seg button:last-child{border-radius:0 5px 5px 0}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--well)}
+.seg-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.seg-row .lbl{width:50px}
+.fx-bottom{display:flex;align-items:center;gap:14px;flex-wrap:wrap}
+.fx-on{padding:12px 18px;font-size:14px}
+.fx-on[aria-pressed="true"]{background:var(--led-r);color:var(--well);box-shadow:0 0 16px var(--glow-r)}
+.fx-read{color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+.xf{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border-top:1px solid var(--edge);padding-top:12px}
+.xf .ends{font-family:var(--f-label);font-weight:700;font-size:20px}
+.xf .ends.a{color:var(--deck-a)} .xf .ends.b{color:var(--deck-b)}
+.xf-foot{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.notes{color:var(--dim);font-size:12px;display:flex;flex-wrap:wrap;gap:6px 22px}
+.notes b{color:var(--ink);font-weight:500}
+
+/* live input panel */
+.live{padding:14px;display:grid;gap:10px}
+.live-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.live-lbl{display:flex;align-items:center;gap:8px;color:var(--ink);font-size:14px}
+.live-note{margin:0;color:var(--dim);font-size:12px}
+.live-note:empty{display:none}
+.live-note.warn{color:var(--led-y)}
+.live-grid{display:grid;grid-template-columns:1fr 1.4fr;gap:14px}
+.route{background:var(--well);border:1px solid var(--edge);border-radius:8px;padding:12px;display:grid;gap:8px;align-content:start;min-width:0}
+.route h2{margin:0;font-family:var(--f-label);font-size:17px;font-weight:600;letter-spacing:.04em;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.step{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim)}
+.route p{margin:0;color:var(--dim);max-width:62ch}
+.route a{color:var(--ink)}
+.pick{display:grid;grid-template-columns:50px minmax(0,1fr) auto;gap:8px;align-items:center}
+select{font:inherit;font-size:12px;color:var(--ink);background:var(--panel-hi);border:1px solid var(--edge);border-radius:5px;padding:6px 8px;min-width:0;width:100%}
+.btn.big{justify-self:start;padding:10px 16px;font-size:14px}
+.app .live-grid{grid-template-columns:1fr}
+@media (max-width:760px){.live-grid{grid-template-columns:1fr}}
+
+@media (max-width:900px){
+  .mixer{grid-template-columns:1fr 1fr;grid-template-areas:"a b" "c c"}
+}
+@media (max-width:760px){
+  .decks{grid-template-columns:1fr}
+  .center-row{grid-template-columns:1fr}
+  .master{border-right:0;padding-right:0;border-bottom:1px solid var(--edge);padding-bottom:12px;grid-template-columns:auto auto auto;align-items:center;justify-content:start;gap:16px}
+  .tempo{margin-left:0}
+}
+@media (max-width:440px){
+  .strip{padding:12px 8px}
+  .row{grid-template-columns:36px 54px 1fr;gap:4px}
+  .kill kbd{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><h1>Booth Mixer</h1><span class="plate">BM-2 · 2-channel isolator</span></div>
+    <div class="engine"><span class="dot" id="engDot"></span><span id="engTxt">Audio engine idle · press Play on a deck</span></div>
+  </header>
+
+  <section class="live chassis" aria-label="Mix what's playing">
+    <div class="live-head">
+      <span class="lbl live-lbl"><span class="dot" id="liveDot"></span>Mix what's playing</span>
+      <div class="seg-row"><span class="lbl">Into deck</span><div class="seg" id="liveTarget">
+        <button data-v="A" aria-pressed="true">A</button><button data-v="B" aria-pressed="false">B</button>
+      </div></div>
+    </div>
+    <p class="live-note" id="liveNote" role="status"></p>
+    <div class="live-grid">
+      <div class="route">
+        <h2><span class="step">Route 1</span>Spotify in Chrome</h2>
+        <p>Play Spotify at <a href="https://open.spotify.com" target="_blank" rel="noopener">open.spotify.com</a> in Chrome, then grab that tab. The tab goes quiet and you hear it only through the mixer.</p>
+        <button class="btn big" id="grabTab">Grab tab audio</button>
+      </div>
+      <div class="route">
+        <h2><span class="step">Route 2</span>Spotify app, or any sound</h2>
+        <p>Install the free <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener">BlackHole 2ch</a> driver and set your Mac's sound output to it. Pick BlackHole as Input here and your speakers or headphones as Output.</p>
+        <div class="pick"><label class="lbl" for="inDev">Input</label><select id="inDev"><option value="">Default input</option></select><button class="btn" id="useIn">Use input</button></div>
+        <div class="pick"><label class="lbl" for="outDev">Output</label><select id="outDev"><option value="">System default</option></select><span></span></div>
+      </div>
+    </div>
+  </section>
+
+  <div class="decks" id="decks"></div>
+
+  <div class="mixer" id="mixer">
+    <section class="center chassis" aria-label="Master section">
+      <div class="spec-wrap"><canvas id="spec" aria-label="Master spectrum analyser"></canvas></div>
+      <div class="center-row">
+        <div class="master">
+          <div class="lbl">Master</div>
+          <div class="knob" id="k-master"></div>
+          <div class="mstr">
+            <div class="scale"><span>-36</span><span>-24</span><span>-15</span><span>-9</span><span>-4</span><span>-1</span><span>0</span></div>
+            <div class="chl"><div class="meter" id="m-L"></div><span>L</span></div>
+            <div class="chl"><div class="meter" id="m-R"></div><span>R</span></div>
+          </div>
+          <div class="limit lbl"><span class="dot" id="limitLed"></span>Limit</div>
+        </div>
+        <div class="fx">
+          <div class="lbl">Beat FX</div>
+          <div class="seg-row"><span class="lbl">Type</span><div class="seg" id="fxType">
+            <button data-v="echo" aria-pressed="true">Echo</button><button data-v="reverb" aria-pressed="false">Reverb</button><button data-v="flanger" aria-pressed="false">Flanger</button>
+          </div></div>
+          <div class="seg-row"><span class="lbl">Beat</span><div class="seg" id="fxBeat">
+            <button data-v="0.25" aria-pressed="false">1/4</button><button data-v="0.5" aria-pressed="false">1/2</button><button data-v="0.75" aria-pressed="true">3/4</button><button data-v="1" aria-pressed="false">1</button><button data-v="2" aria-pressed="false">2</button>
+          </div></div>
+          <div class="seg-row"><span class="lbl">Ch</span><div class="seg" id="fxAssign">
+            <button data-v="A" aria-pressed="false">A</button><button data-v="both" aria-pressed="true">Master</button><button data-v="B" aria-pressed="false">B</button>
+          </div></div>
+          <div class="fx-bottom">
+            <div class="knob" id="k-fx"></div>
+            <button class="fx-on" id="fxOn" aria-pressed="false">FX On<kbd>F</kbd></button>
+            <button class="btn" id="tap" title="Tap along to set the tempo for live audio">Tap<kbd>T</kbd></button>
+          </div>
+          <div class="fx-read" id="fxRead"></div>
+        </div>
+      </div>
+      <div class="xf">
+        <span class="ends a">A</span>
+        <input type="range" class="xfader" id="xf" min="-1" max="1" step="0.01" value="0" aria-label="Crossfader">
+        <span class="ends b">B</span>
+      </div>
+      <div class="xf-foot">
+        <span class="lbl">Crossfader</span>
+        <div class="seg-row"><span class="lbl">Curve</span><div class="seg" id="xfCurve">
+          <button data-v="smooth" aria-pressed="true">Smooth</button><button data-v="cut" aria-pressed="false">Cut</button>
+        </div></div>
+      </div>
+    </section>
+  </div>
+
+  <footer class="notes">
+    <span><b>Knobs</b> drag up/down, scroll, or arrow keys · double-click resets · Shift for fine</span>
+    <span><b>Kills</b> Q W E (deck A) · I O P (deck B)</span>
+    <span><b>Play</b> Z / M · <b>FX</b> F</span>
+    <span><b>Tracks</b> drop an audio file on a deck</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+const F1 = 250, F2 = 3000;           // isolator crossover points
+const DEMO_BPM = 124;
+const EQ_MIN = -26, EQ_MAX = 6;
+const KEYS = {A:["q","w","e"], B:["i","o","p"]};
+const BANDS = ["hi","mid","low"];
+const LED_DB = [-36,-30,-24,-18,-15,-12,-9,-6,-4,-2,-1,0];
+
+const $ = s => document.querySelector(s);
+const clamp = (v,a,b) => Math.min(b, Math.max(a, v));
+const dbToGain = d => Math.pow(10, d/20);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const state = {
+  A:{trim:0, hi:0, mid:0, low:0, kill:{hi:false,mid:false,low:false}, filter:0, fader:1},
+  B:{trim:0, hi:0, mid:0, low:0, kill:{hi:false,mid:false,low:false}, filter:0, fader:1},
+  master:-3, xf:0, curve:"smooth",
+  fx:{type:"echo", beat:0.75, assign:"both", depth:0.5, on:false}
+};
+
+/* ---------------- audio engine ---------------- */
+let ctx = null; const G = {};
+const AC = window.AudioContext || window.webkitAudioContext;
+
+function biq(type, f, q){ const b = ctx.createBiquadFilter(); b.type = type; b.frequency.value = f; b.Q.value = (q == null ? -3.0103 : q); return b; }
+function lr4(type, f){ const a = biq(type, f), b = biq(type, f); a.connect(b); return {in:a, out:b}; }
+function ramp(p, v){ if(ctx) p.setTargetAtTime(v, ctx.currentTime, 0.012); }
+
+function initAudio(){
+  if(ctx){ if(ctx.state !== "running") ctx.resume(); return ctx; }
+  ctx = new AC({latencyHint:"interactive"});
+  G.bus = ctx.createGain();
+  G.master = ctx.createGain();
+  G.limiter = ctx.createDynamicsCompressor();
+  G.limiter.threshold.value = -2; G.limiter.knee.value = 0; G.limiter.ratio.value = 20;
+  G.limiter.attack.value = 0.002; G.limiter.release.value = 0.12;
+  G.bus.connect(G.master); G.master.connect(G.limiter); G.limiter.connect(ctx.destination);
+  G.spec = ctx.createAnalyser(); G.spec.fftSize = 4096; G.spec.smoothingTimeConstant = 0.78;
+  G.limiter.connect(G.spec);
+  G.split = ctx.createChannelSplitter(2); G.limiter.connect(G.split);
+  G.mL = ctx.createAnalyser(); G.mL.fftSize = 1024; G.mR = ctx.createAnalyser(); G.mR.fftSize = 1024;
+  G.split.connect(G.mL, 0); G.split.connect(G.mR, 1);
+  G.fxIn = ctx.createGain();
+  buildFx();
+  G.ch = {A:buildChannel(), B:buildChannel()};
+  applyAll();
+  $("#engDot").classList.add("on");
+  $("#engTxt").textContent = `Running · ${(ctx.sampleRate/1000).toFixed(1)} kHz · isolator ${F1} Hz / ${F2/1000} kHz`;
+  if(ctx.state !== "running") ctx.resume();
+  return ctx;
+}
+
+function buildChannel(){
+  const n = {};
+  n.input = ctx.createGain(); n.trim = ctx.createGain(); n.input.connect(n.trim);
+  // Linkwitz–Riley style 3-way split so a kill really removes the band
+  const lo = lr4("lowpass", F1), up = lr4("highpass", F1), mi = lr4("lowpass", F2), hi = lr4("highpass", F2);
+  n.trim.connect(lo.in); n.trim.connect(up.in); up.out.connect(mi.in); up.out.connect(hi.in);
+  n.gLow = ctx.createGain(); n.gMid = ctx.createGain(); n.gHi = ctx.createGain();
+  lo.out.connect(n.gLow); mi.out.connect(n.gMid); hi.out.connect(n.gHi);
+  n.lpf = biq("lowpass", Math.min(22000, ctx.sampleRate/2 - 100)); n.hpf = biq("highpass", 10);
+  n.gLow.connect(n.lpf); n.gMid.connect(n.lpf); n.gHi.connect(n.lpf); n.lpf.connect(n.hpf);
+  n.meter = ctx.createAnalyser(); n.meter.fftSize = 1024; n.hpf.connect(n.meter);
+  n.fader = ctx.createGain(); n.hpf.connect(n.fader);
+  n.xf = ctx.createGain(); n.fader.connect(n.xf); n.xf.connect(G.bus);
+  n.send = ctx.createGain(); n.send.gain.value = 0; n.xf.connect(n.send); n.send.connect(G.fxIn);
+  return n;
+}
+
+function makeImpulse(sec){
+  const len = Math.floor(ctx.sampleRate * sec), b = ctx.createBuffer(2, len, ctx.sampleRate);
+  for(let c = 0; c < 2; c++){ const d = b.getChannelData(c); for(let i = 0; i < len; i++){ d[i] = (Math.random()*2-1) * Math.pow(1 - i/len, 3.2); } }
+  return b;
+}
+
+function buildFx(){
+  G.fxOut = ctx.createGain(); G.fxOut.connect(G.bus);
+  // echo
+  G.echo = ctx.createDelay(5); G.echoFb = ctx.createGain(); G.echoFb.gain.value = 0.5;
+  G.echoHp = biq("highpass", 220); G.echoOut = ctx.createGain();
+  G.fxIn.connect(G.echo); G.echo.connect(G.echoHp); G.echoHp.connect(G.echoFb); G.echoFb.connect(G.echo);
+  G.echo.connect(G.echoOut); G.echoOut.connect(G.fxOut);
+  // reverb
+  G.conv = ctx.createConvolver(); G.conv.buffer = makeImpulse(2.8); G.revOut = ctx.createGain();
+  G.fxIn.connect(G.conv); G.conv.connect(G.revOut); G.revOut.connect(G.fxOut);
+  // flanger
+  G.flDelay = ctx.createDelay(0.05); G.flDelay.delayTime.value = 0.006;
+  G.lfo = ctx.createOscillator(); G.lfo.frequency.value = 0.2; G.lfoGain = ctx.createGain(); G.lfoGain.gain.value = 0.003;
+  G.lfo.connect(G.lfoGain); G.lfoGain.connect(G.flDelay.delayTime); G.lfo.start();
+  G.flFb = ctx.createGain(); G.flFb.gain.value = 0.6; G.flOut = ctx.createGain();
+  G.fxIn.connect(G.flDelay); G.flDelay.connect(G.flFb); G.flFb.connect(G.flDelay); G.flDelay.connect(G.flOut); G.flOut.connect(G.fxOut);
+}
+
+function eqGain(c, band){ const v = state[c][band]; return (state[c].kill[band] || v <= EQ_MIN) ? 0 : dbToGain(v); }
+function filterFreq(x){
+  const a = Math.abs(x); if(a < 0.03) return null;
+  const t = (a - 0.03) / 0.97;
+  return x < 0 ? 20000 * Math.pow(80/20000, t) : 20 * Math.pow(8000/20, t);
+}
+function applyFilter(c){
+  if(!ctx) return;
+  const n = G.ch[c], x = state[c].filter, f = filterFreq(x), top = Math.min(22000, ctx.sampleRate/2 - 100);
+  const res = f == null ? -3.01 : -3.01 + Math.min(1, (Math.abs(x) - 0.03)/0.25) * 11;
+  if(f == null){ ramp(n.lpf.frequency, top); ramp(n.hpf.frequency, 10); ramp(n.lpf.Q, -3.01); ramp(n.hpf.Q, -3.01); }
+  else if(x < 0){ ramp(n.lpf.frequency, f); ramp(n.hpf.frequency, 10); ramp(n.lpf.Q, res); ramp(n.hpf.Q, -3.01); }
+  else { ramp(n.hpf.frequency, f); ramp(n.lpf.frequency, top); ramp(n.hpf.Q, res); ramp(n.lpf.Q, -3.01); }
+}
+function applyChannel(c){
+  if(!ctx) return;
+  const n = G.ch[c], s = state[c];
+  ramp(n.trim.gain, dbToGain(s.trim));
+  ramp(n.gLow.gain, eqGain(c, "low")); ramp(n.gMid.gain, eqGain(c, "mid")); ramp(n.gHi.gain, eqGain(c, "hi"));
+  ramp(n.fader.gain, s.fader * s.fader);
+  applyFilter(c);
+}
+function xfGains(x, curve){
+  if(curve === "cut"){
+    return [x <= 0.85 ? 1 : Math.max(0, (1-x)/0.15), x >= -0.85 ? 1 : Math.max(0, (1+x)/0.15)];
+  }
+  const t = (x + 1) / 2;
+  return [Math.min(1, Math.SQRT2 * Math.cos(t*Math.PI/2)), Math.min(1, Math.SQRT2 * Math.sin(t*Math.PI/2))];
+}
+function applyXf(){ if(!ctx) return; const [a, b] = xfGains(state.xf, state.curve); ramp(G.ch.A.xf.gain, a); ramp(G.ch.B.xf.gain, b); }
+function applyMaster(){ if(!ctx) return; ramp(G.master.gain, state.master <= -40 ? 0 : dbToGain(state.master)); }
+
+function currentBpm(){
+  const anyLive = decks.A.mode === "live" || decks.B.mode === "live";
+  if(anyLive && state.tapBpm) return state.tapBpm;
+  for(const id of ["A","B"]){ const d = decks[id]; if(d.playing && d.mode === "buffer" && d.bpm) return d.bpm * d.rate; }
+  if(state.tapBpm) return state.tapBpm;
+  for(const id of ["A","B"]){ const d = decks[id]; if(d.bpm) return d.bpm * d.rate; }
+  return DEMO_BPM;
+}
+function applyFx(){
+  const fx = state.fx, bpm = currentBpm(), beatSec = 60 / bpm;
+  const echoT = fx.beat * beatSec, flPeriod = fx.beat * 16 * beatSec;
+  const names = {echo:"Echo", reverb:"Reverb", flanger:"Flanger"};
+  const timeTxt = fx.type === "echo" ? `${Math.round(echoT*1000)} ms repeat`
+                : fx.type === "flanger" ? `${flPeriod.toFixed(1)} s sweep` : "2.8 s tail";
+  $("#fxRead").textContent = `${names[fx.type]} · ${bpm.toFixed(1)} BPM · ${timeTxt}`;
+  $("#fxBeat").style.opacity = fx.type === "reverb" ? .45 : 1;
+  if(!ctx) return;
+  ramp(G.echo.delayTime, Math.min(4.9, echoT));
+  ramp(G.lfo.frequency, 1 / flPeriod);
+  ramp(G.echoOut.gain, fx.type === "echo" ? 1 : 0);
+  ramp(G.revOut.gain, fx.type === "reverb" ? 1.4 : 0);
+  ramp(G.flOut.gain, fx.type === "flanger" ? 1 : 0);
+  ramp(G.fxOut.gain, fx.depth);
+  ramp(G.echoFb.gain, 0.3 + 0.35 * fx.depth);
+  ramp(G.ch.A.send.gain, fx.on && fx.assign !== "B" ? 1 : 0);
+  ramp(G.ch.B.send.gain, fx.on && fx.assign !== "A" ? 1 : 0);
+}
+function applyAll(){ applyChannel("A"); applyChannel("B"); applyXf(); applyMaster(); applyFx(); }
+
+/* ---------------- demo loops (synthesised offline) ---------------- */
+const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
+async function renderDemo(kind){
+  const sr = 44100, beat = 60 / DEMO_BPM, bars = 4, len = Math.round(beat * 4 * bars * sr);
+  const oc = new OfflineAudioContext(2, len, sr);
+  const out = oc.createGain(); out.gain.value = 0.8; out.connect(oc.destination);
+  const noise = oc.createBuffer(1, sr, sr); { const d = noise.getChannelData(0); for(let i = 0; i < sr; i++) d[i] = Math.random()*2 - 1; }
+  const chords = [[57,60,64,67],[53,57,60,64],[55,60,64,67],[55,59,62,67]];
+  const roots = [33,29,36,31];
+  const env = (g, t, peak, dec, att) => { g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(peak, t + (att||0.002)); g.gain.exponentialRampToValueAtTime(0.0001, t + dec); };
+  const nz = (t, dur, filt, f, q, peak, dec, pan) => {
+    const s = oc.createBufferSource(); s.buffer = noise;
+    const b = oc.createBiquadFilter(); b.type = filt; b.frequency.value = f; b.Q.value = q;
+    const g = oc.createGain(); env(g, t, peak, dec); const p = oc.createStereoPanner(); p.pan.value = pan || 0;
+    s.connect(b); b.connect(g); g.connect(p); p.connect(out); s.start(t, Math.random()*0.5); s.stop(t + dur);
+  };
+  if(kind === "groove"){
+    for(let i = 0; i < 16; i++){
+      const t = i * beat, bar = Math.floor(i/4), root = roots[bar];
+      // kick
+      const o = oc.createOscillator(), g = oc.createGain();
+      o.frequency.setValueAtTime(160, t); o.frequency.exponentialRampToValueAtTime(46, t + 0.11);
+      env(g, t, 1, 0.42); o.connect(g); g.connect(out); o.start(t); o.stop(t + 0.45);
+      // hats
+      nz(t + beat/2, 0.3, "highpass", 7500, 0, 0.32, 0.22, 0.15);
+      nz(t + beat/4, 0.06, "highpass", 9000, 0, 0.12, 0.04, -0.25);
+      nz(t + 3*beat/4, 0.06, "highpass", 9000, 0, 0.14, 0.045, -0.25);
+      // clap on 2 & 4
+      if(i % 4 === 1 || i % 4 === 3){
+        for(const dt of [0, 0.011, 0.023]) nz(t + dt, 0.05, "bandpass", 1400, 1.4, 0.55, 0.03);
+        nz(t + 0.03, 0.25, "bandpass", 1300, 1.2, 0.35, 0.2);
+      }
+      // offbeat bass
+      const bt = t + beat/2, bo = oc.createOscillator(), sub = oc.createOscillator(), lp = oc.createBiquadFilter(), bg = oc.createGain();
+      bo.type = "sawtooth"; bo.frequency.value = mtof(root); sub.frequency.value = mtof(root);
+      lp.type = "lowpass"; lp.Q.value = 6; lp.frequency.setValueAtTime(1100, bt); lp.frequency.exponentialRampToValueAtTime(160, bt + beat*0.4);
+      env(bg, bt, 0.42, beat*0.45, 0.004);
+      bo.connect(lp); sub.connect(lp); lp.connect(bg); bg.connect(out); bo.start(bt); sub.start(bt); bo.stop(bt + beat*0.5); sub.stop(bt + beat*0.5);
+    }
+  } else {
+    const stabAt = [0, 0.75, 1.5, 2.5, 3.0];
+    for(let bar = 0; bar < 4; bar++){
+      const t0 = bar * 4 * beat, ch = chords[bar];
+      for(const s of stabAt){
+        const t = t0 + s * beat, lp = oc.createBiquadFilter(), g = oc.createGain();
+        lp.type = "lowpass"; lp.Q.value = 3; lp.frequency.setValueAtTime(3400, t); lp.frequency.exponentialRampToValueAtTime(700, t + beat*0.45);
+        env(g, t, 0.075, beat*0.55, 0.004); lp.connect(g); g.connect(out);
+        ch.forEach((m, k) => { for(const det of [-8, 8]){
+          const o = oc.createOscillator(), p = oc.createStereoPanner(); o.type = "sawtooth"; o.frequency.value = mtof(m); o.detune.value = det;
+          p.pan.value = det < 0 ? -0.35 : 0.35; o.connect(p); p.connect(lp); o.start(t); o.stop(t + beat*0.6);
+        }});
+      }
+      // arpeggio with a dotted echo
+      const pat = [0,1,2,3,2,1,3,2,0,2,1,3,2,3,1,2];
+      for(let k = 0; k < 16; k++){
+        const t = t0 + k * beat / 4, o = oc.createOscillator(), g = oc.createGain(), p = oc.createStereoPanner();
+        o.type = "square"; o.frequency.value = mtof(ch[pat[k]] + 12);
+        const bp = oc.createBiquadFilter(); bp.type = "lowpass"; bp.frequency.value = 2600;
+        env(g, t, k % 4 === 0 ? 0.05 : 0.032, 0.1); p.pan.value = k % 2 ? 0.4 : -0.4;
+        o.connect(bp); bp.connect(g); g.connect(p); p.connect(out);
+        const dl = oc.createDelay(1); dl.delayTime.value = beat*0.75; const fb = oc.createGain(); fb.gain.value = 0.3;
+        p.connect(dl); dl.connect(fb); fb.connect(dl); dl.connect(out);
+        o.start(t); o.stop(t + 0.12);
+        // shaker
+        nz(t, 0.07, "bandpass", 6200, 2, k % 2 ? 0.16 : 0.08, 0.05, 0.2);
+      }
+      // soft sub pad
+      const pad = oc.createOscillator(), pg = oc.createGain(); pad.type = "triangle"; pad.frequency.value = mtof(roots[bar] + 12);
+      pg.gain.setValueAtTime(0, t0); pg.gain.linearRampToValueAtTime(0.12, t0 + 0.4); pg.gain.linearRampToValueAtTime(0, t0 + 4*beat);
+      pad.connect(pg); pg.connect(out); pad.start(t0); pad.stop(t0 + 4*beat);
+    }
+  }
+  const buf = await oc.startRendering();
+  let peak = 0; for(let c = 0; c < 2; c++){ const d = buf.getChannelData(c); for(let i = 0; i < d.length; i++){ const a = Math.abs(d[i]); if(a > peak) peak = a; } }
+  const k = peak > 0 ? 0.89 / peak : 1;
+  for(let c = 0; c < 2; c++){ const d = buf.getChannelData(c); for(let i = 0; i < d.length; i++) d[i] *= k; }
+  return buf;
+}
+
+/* ---------------- decks ---------------- */
+function fmtTime(s){ if(!isFinite(s)) s = 0; const m = Math.floor(s/60), r = s - m*60; return `${m}:${r < 10 ? "0" : ""}${r.toFixed(1)}`; }
+
+class Deck{
+  constructor(id){
+    Object.assign(this, {id, buffer:null, name:"", bpm:null, loop:true, rate:1, playing:false, src:null,
+      anchorTime:0, anchorPos:0, pausedAt:0, mode:"buffer", stream:null, streamNode:null, sync:true, peaks:null, demo:null, dirty:true, liveMuted:false});
+  }
+  get duration(){ return this.buffer ? this.buffer.duration : 0; }
+  get other(){ return decks[this.id === "A" ? "B" : "A"]; }
+  position(){
+    if(this.mode !== "buffer" || !this.playing || !ctx) return this.pausedAt;
+    let p = this.anchorPos + (ctx.currentTime - this.anchorTime) * this.rate;
+    return this.loop ? p % this.duration : Math.min(p, this.duration);
+  }
+  load(buffer, name, bpm, demo){
+    this.stopLive(); this.pause(); this.pausedAt = 0;
+    Object.assign(this, {buffer, name, bpm: bpm || null, demo: demo || null, loop: !!bpm});
+    this.peaks = computePeaks(buffer, 1400);
+    this.status(""); this.dirty = true; renderDeckUI(this); applyFx();
+  }
+  play(opts){
+    if(this.mode === "live"){ this.liveMuted = false; initAudio(); this.streamNode && this.streamNode.connect(G.ch[this.id].input); renderDeckUI(this); return; }
+    if(!this.buffer || this.playing) return;
+    initAudio();
+    let offset = this.pausedAt; if(offset >= this.duration - 0.01) offset = 0;
+    const o = this.other;
+    if(!(opts && opts.noSync) && this.sync && this.bpm && o.playing && o.mode === "buffer" && o.bpm){
+      this.setRate(o.bpm * o.rate / this.bpm);
+      const ob = 4 * 60 / o.bpm, tb = 4 * 60 / this.bpm, frac = (o.position() % ob) / ob;
+      offset = (Math.floor(offset / tb) * tb + frac * tb) % this.duration;
+    }
+    const s = ctx.createBufferSource(); s.buffer = this.buffer; s.loop = this.loop; s.playbackRate.value = this.rate;
+    s.connect(G.ch[this.id].input);
+    s.onended = () => { if(this.src === s){ this.src = null; this.playing = false; this.pausedAt = 0; this.dirty = true; renderDeckUI(this); applyFx(); } };
+    s.start(0, offset);
+    Object.assign(this, {src:s, anchorTime:ctx.currentTime, anchorPos:offset, playing:true, dirty:true});
+    renderDeckUI(this); applyFx();
+  }
+  pause(){
+    if(this.mode === "live"){ if(this.streamNode){ try{ this.streamNode.disconnect(); }catch(e){} } this.liveMuted = true; renderDeckUI(this); return; }
+    if(!this.playing) return;
+    this.pausedAt = this.position(); const s = this.src; this.src = null; this.playing = false;
+    try{ s.stop(); }catch(e){}
+    this.dirty = true; renderDeckUI(this); applyFx();
+  }
+  toggle(){ (this.mode === "live" ? !this.liveMuted : this.playing) ? this.pause() : this.play(); }
+  cue(){ if(this.mode === "live") return; this.pause(); this.pausedAt = 0; this.dirty = true; renderDeckUI(this); }
+  seek(p){ if(this.mode === "live" || !this.buffer) return; const was = this.playing; if(was) this.pause(); this.pausedAt = clamp(p, 0, this.duration - 0.01); this.dirty = true; if(was) this.play({noSync:true}); else renderDeckUI(this); }
+  setRate(r){
+    r = clamp(r, 0.5, 1.5);
+    if(this.playing && this.src){ this.anchorPos = this.position(); this.anchorTime = ctx.currentTime; this.src.playbackRate.setValueAtTime(r, ctx.currentTime); }
+    this.rate = r; renderTempo(this); applyFx();
+  }
+  setLoop(v){
+    if(this.playing && this.src){ this.anchorPos = this.position(); this.anchorTime = ctx.currentTime; this.src.loop = v; }
+    this.loop = v; renderDeckUI(this);
+  }
+  async startLive(kind, deviceId){
+    const md = navigator.mediaDevices;
+    if(!md || (kind === "tab" ? !md.getDisplayMedia : !md.getUserMedia)){ this.status(blockedMsg(kind), true); return false; }
+    initAudio();
+    try{
+      let stream;
+      if(kind === "tab"){
+        stream = await md.getDisplayMedia({video:true, audio:{suppressLocalAudioPlayback:true, echoCancellation:false, noiseSuppression:false, autoGainControl:false}, systemAudio:"include", selfBrowserSurface:"exclude"});
+        if(!stream.getAudioTracks().length){ stream.getTracks().forEach(t => t.stop()); throw Object.assign(new Error("noaudio"), {name:"NoAudio"}); }
+      } else {
+        const a = {echoCancellation:false, noiseSuppression:false, autoGainControl:false, channelCount:2};
+        if(deviceId) a.deviceId = {exact:deviceId};
+        stream = await md.getUserMedia({audio:a});
+      }
+      this.pause(); this.stopLive();
+      this.mode = "live"; this.stream = stream; this.liveMuted = false;
+      this.streamNode = ctx.createMediaStreamSource(new MediaStream(stream.getAudioTracks()));
+      this.streamNode.connect(G.ch[this.id].input);
+      const label = stream.getAudioTracks()[0].label || "input";
+      this.name = kind === "tab" ? "Live · shared tab audio" : `Live · ${label}`;
+      stream.getAudioTracks()[0].addEventListener("ended", () => this.stopLive(true));
+      this.status(kind === "tab" ? "Mixing the shared tab. Stop sharing in Chrome's bar to end." : `Mixing ${label}. Tap T along with the beat to sync the echo.`);
+      this.dirty = true; renderDeckUI(this); applyFx();
+      refreshDevices(); checkFeedback();
+      return true;
+    }catch(e){
+      if(e.name === "NoAudio") this.status("That share had no sound. In Chrome's picker choose a tab and keep “Also share tab audio” on.", true);
+      else if(e.name === "NotAllowedError" || e.name === "SecurityError") this.status(blockedMsg(kind), true);
+      else if(e.name === "OverconstrainedError" || e.name === "NotFoundError") this.status("That input device isn't available. Pick another one.", true);
+      else this.status(`Couldn't start live input: ${e.message || e.name}`, true);
+      return false;
+    }
+  }
+  stopLive(ended){
+    if(this.mode !== "live") return;
+    if(this.stream) this.stream.getTracks().forEach(t => t.stop());
+    if(this.streamNode){ try{ this.streamNode.disconnect(); }catch(e){} }
+    Object.assign(this, {stream:null, streamNode:null, mode:"buffer", liveMuted:false, name: this.buffer ? this.bufName : ""});
+    if(ended) this.status("Live input ended.");
+    this.dirty = true; renderDeckUI(this);
+  }
+  status(msg, warn){ const el = $(`#status${this.id}`); el.textContent = msg; el.classList.toggle("warn", !!warn); }
+}
+const IS_APP = /Electron/i.test(navigator.userAgent);
+const IN_FRAME = (() => { try{ return window.self !== window.top; }catch(e){ return true; } })();
+function blockedMsg(kind){
+  if(IS_APP) return "Audio input was blocked. Allow Booth Mixer in System Settings › Privacy & Security › Microphone, then relaunch it.";
+  return kind === "tab"
+    ? "Tab capture was blocked. Claude's viewer doesn't allow it, so open the standalone copy of this mixer in Chrome to mix a live tab."
+    : "Microphone access was blocked here. Open the standalone copy in Chrome to use a mic or line-in.";
+}
+
+function computePeaks(buf, n){
+  const L = buf.getChannelData(0), R = buf.numberOfChannels > 1 ? buf.getChannelData(1) : L;
+  const step = Math.max(1, Math.floor(L.length / n)), out = new Float32Array(n);
+  for(let i = 0; i < n; i++){ let m = 0; const s = i * step, e = Math.min(L.length, s + step);
+    for(let j = s; j < e; j += 4){ const v = Math.max(Math.abs(L[j]), Math.abs(R[j])); if(v > m) m = v; } out[i] = m; }
+  return out;
+}
+
+const decks = {A:new Deck("A"), B:new Deck("B")};
+
+function deckHTML(id){
+  return `<section class="deck chassis" id="deck${id}" style="--c:var(--deck-${id.toLowerCase()});--glow:var(--glow-${id.toLowerCase()})" aria-label="Deck ${id}">
+    <div class="deck-head"><span class="deck-tag">${id}</span>
+      <div class="deck-title"><div class="track" id="track${id}">Rendering demo loop…</div><div class="meta" id="meta${id}">&nbsp;</div></div>
+      <div class="time" id="time${id}">0:00.0<small>/ 0:00.0</small></div></div>
+    <canvas class="wave" id="wave${id}" aria-label="Deck ${id} waveform, click to jump"></canvas>
+    <div class="transport">
+      <button class="btn play" id="play${id}" aria-pressed="false">Play<kbd>${id === "A" ? "Z" : "M"}</kbd></button>
+      <button class="btn" id="cue${id}">Cue</button>
+      <button class="btn toggle" id="sync${id}" aria-pressed="true" title="Match tempo and bar phase to the other deck when you press Play">Sync</button>
+      <button class="btn toggle" id="loop${id}" aria-pressed="true">Loop</button>
+      <label class="tempo lbl" for="tempo${id}">Tempo <input type="range" id="tempo${id}" min="-8" max="8" step="0.05" value="0"><output id="tempoOut${id}">+0.00%</output></label>
+    </div>
+    <div class="source">
+      <label class="btn">Load track<input type="file" id="file${id}" accept="audio/*" hidden></label>
+      <button class="btn" id="demo${id}">Demo loop</button>
+      <button class="btn" id="tab${id}">Live tab</button>
+      <button class="btn" id="mic${id}">Mic</button>
+    </div>
+    <p class="status" id="status${id}" role="status"></p>
+  </section>`;
+}
+$("#decks").innerHTML = deckHTML("A") + deckHTML("B");
+
+function renderTempo(d){
+  const pct = (d.rate - 1) * 100;
+  const inp = $(`#tempo${d.id}`); if(document.activeElement !== inp) inp.value = clamp(pct, -8, 8);
+  $(`#tempoOut${d.id}`).textContent = `${pct >= 0 ? "+" : ""}${pct.toFixed(2)}%`;
+  renderMeta(d);
+}
+function renderMeta(d){
+  let m;
+  if(d.mode === "live") m = "Live input · no tempo";
+  else if(!d.buffer) m = "Load a track, drop a file here, or pick a demo";
+  else m = (d.bpm ? `${(d.bpm * d.rate).toFixed(1)} BPM · ${Math.round(d.duration / (240 / d.bpm))} bars` : "Tempo unknown · sync off") + (d.demo ? " · demo" : "");
+  $(`#meta${d.id}`).textContent = m;
+}
+function renderDeckUI(d){
+  const id = d.id, live = d.mode === "live";
+  if(!live) d.bufName = d.name;
+  $(`#track${id}`).textContent = d.name || "Empty deck";
+  const on = live ? !d.liveMuted : d.playing;
+  const pb = $(`#play${id}`); pb.setAttribute("aria-pressed", on); pb.firstChild.nodeValue = live ? (on ? "Mute" : "Unmute") : (on ? "Pause" : "Play");
+  pb.disabled = !live && !d.buffer;
+  $(`#cue${id}`).disabled = live || !d.buffer;
+  const sb = $(`#sync${id}`); sb.disabled = live || !d.bpm; sb.setAttribute("aria-pressed", d.sync && !!d.bpm && !live);
+  const lb = $(`#loop${id}`); lb.disabled = live || !d.buffer; lb.setAttribute("aria-pressed", d.loop);
+  $(`#tempo${id}`).disabled = live || !d.buffer;
+  $(`#tab${id}`).textContent = live && d.stream && d.name.includes("tab") ? "Stop live" : "Live tab";
+  $(`#mic${id}`).textContent = live && d.stream && !d.name.includes("tab") ? "Stop live" : (IS_APP ? "Live input" : "Mic");
+  $("#liveDot").classList.toggle("on", decks.A.mode === "live" || decks.B.mode === "live");
+  renderTempo(d);
+}
+
+function wireDeck(id){
+  const d = decks[id];
+  $(`#play${id}`).addEventListener("click", () => d.toggle());
+  $(`#cue${id}`).addEventListener("click", () => d.cue());
+  $(`#sync${id}`).addEventListener("click", () => { d.sync = !d.sync; renderDeckUI(d); });
+  $(`#loop${id}`).addEventListener("click", () => d.setLoop(!d.loop));
+  const t = $(`#tempo${id}`);
+  t.addEventListener("input", () => d.setRate(1 + parseFloat(t.value) / 100));
+  t.addEventListener("dblclick", () => { t.value = 0; d.setRate(1); });
+  $(`#file${id}`).addEventListener("change", e => { const f = e.target.files[0]; if(f) loadFile(d, f); e.target.value = ""; });
+  $(`#demo${id}`).addEventListener("click", async () => { const k = id === "A" ? "groove" : "stabs"; d.load(await demoBuf(k), DEMO_NAMES[k], DEMO_BPM, k); });
+  $(`#tab${id}`).addEventListener("click", () => d.mode === "live" && d.name.includes("tab") ? d.stopLive() : d.startLive("tab"));
+  $(`#mic${id}`).addEventListener("click", () => d.mode === "live" && !d.name.includes("tab") ? d.stopLive() : d.startLive("mic", $("#inDev").value));
+  if(IS_APP) $(`#tab${id}`).hidden = true;
+  const wave = $(`#wave${id}`);
+  wave.addEventListener("click", e => { if(!d.buffer) return; const r = wave.getBoundingClientRect(); d.seek((e.clientX - r.left) / r.width * d.duration); });
+  const el = $(`#deck${id}`);
+  el.addEventListener("dragover", e => { e.preventDefault(); el.classList.add("drag"); });
+  el.addEventListener("dragleave", () => el.classList.remove("drag"));
+  el.addEventListener("drop", e => { e.preventDefault(); el.classList.remove("drag"); const f = e.dataTransfer.files[0]; if(f) loadFile(d, f); });
+}
+async function loadFile(d, file){
+  d.status(`Decoding ${file.name}…`);
+  try{
+    const ab = await file.arrayBuffer();
+    const dec = ctx || new OfflineAudioContext(2, 1, 48000);
+    const buf = await new Promise((res, rej) => { const p = dec.decodeAudioData(ab, res, rej); if(p && p.catch) p.catch(rej); });
+    d.load(buf, file.name.replace(/\.[^.]+$/, ""), null, null);
+  }catch(e){ d.status("That file couldn't be decoded. Try an MP3, WAV, AAC or OGG file.", true); }
+}
+const DEMO_NAMES = {groove:"Warehouse Groove", stabs:"Night Stabs"};
+const demoCache = {};
+function demoBuf(k){ return demoCache[k] || (demoCache[k] = renderDemo(k)); }
+
+/* ---------------- knobs ---------------- */
+function arcPath(a1, a2){
+  const r = 24, p = a => [30 + r*Math.sin(a*Math.PI/180), 30 - r*Math.cos(a*Math.PI/180)];
+  const [x1, y1] = p(a1), [x2, y2] = p(a2);
+  return `M${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 ${a2 - a1 > 180 ? 1 : 0} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+}
+function knob(el, o){
+  const {min, max, def, step, label, fmt, onChange} = o; let val = o.value; const origin = o.origin == null ? def : o.origin;
+  el.tabIndex = 0; el.setAttribute("role", "slider"); el.setAttribute("aria-label", label);
+  el.setAttribute("aria-valuemin", min); el.setAttribute("aria-valuemax", max);
+  el.innerHTML = `<svg viewBox="0 0 60 60" aria-hidden="true"><path class="k-track" d="${arcPath(-135, 135)}"/><path class="k-arc"/><circle class="k-cap" cx="30" cy="30" r="17"/><line class="k-ptr" x1="30" y1="30" x2="30" y2="16"/></svg><span class="k-val"></span>`;
+  const arc = el.querySelector(".k-arc"), ptr = el.querySelector(".k-ptr"), out = el.querySelector(".k-val");
+  const ang = v => -135 + 270 * (v - min) / (max - min);
+  function render(){
+    const a = ang(val), a0 = ang(origin);
+    arc.setAttribute("d", Math.abs(a - a0) < 0.5 ? "" : arcPath(Math.min(a, a0), Math.max(a, a0)));
+    ptr.setAttribute("transform", `rotate(${a.toFixed(1)} 30 30)`);
+    const t = fmt(val); out.textContent = t; el.setAttribute("aria-valuenow", val); el.setAttribute("aria-valuetext", t);
+  }
+  function set(v, emit = true){ v = clamp(Math.round(v / step) * step, min, max); if(v === val && emit) return; val = v; render(); if(emit) onChange(v); }
+  let sy = 0, sv = 0;
+  el.addEventListener("pointerdown", e => { el.setPointerCapture(e.pointerId); sy = e.clientY; sv = val; el.focus({preventScroll:true}); });
+  el.addEventListener("pointermove", e => { if(!el.hasPointerCapture(e.pointerId)) return; set(sv + (sy - e.clientY) / (e.shiftKey ? 700 : 170) * (max - min)); });
+  el.addEventListener("wheel", e => { e.preventDefault(); set(val - Math.sign(e.deltaY) * (max - min) / (e.shiftKey ? 200 : 50)); }, {passive:false});
+  el.addEventListener("dblclick", () => set(def));
+  el.addEventListener("keydown", e => {
+    const big = (max - min) / 20, fine = (max - min) / 100, k = e.key;
+    if(k === "ArrowUp" || k === "ArrowRight"){ set(val + (e.shiftKey ? fine : big)); e.preventDefault(); }
+    else if(k === "ArrowDown" || k === "ArrowLeft"){ set(val - (e.shiftKey ? fine : big)); e.preventDefault(); }
+    else if(k === "Home"){ set(min); e.preventDefault(); } else if(k === "End"){ set(max); e.preventDefault(); }
+    else if(k === "Delete" || k === "Backspace"){ set(def); e.preventDefault(); }
+  });
+  render();
+  return {set, get: () => val, render};
+}
+const fmtDb = v => `${v > 0 ? "+" : ""}${v.toFixed(1)} dB`;
+const fmtHz = f => f >= 1000 ? `${(f/1000).toFixed(f >= 10000 ? 0 : 1)}k` : `${Math.round(f)}`;
+
+/* ---------------- mixer UI ---------------- */
+function stripHTML(c){
+  const names = {hi:"High", mid:"Mid", low:"Low"};
+  return `<section class="strip chassis" data-ch="${c}" style="--c:var(--deck-${c.toLowerCase()})" aria-label="Channel ${c}">
+    <header class="strip-head"><span class="ch-tag">${c}</span><span class="lbl">Channel</span></header>
+    <div class="row trim"><span class="lbl">Trim</span><div class="knob" id="k-${c}-trim"></div><span></span></div>
+    <div class="eq">${BANDS.map((b, i) => `<div class="row"><span class="lbl">${names[b]}</span><div class="knob" id="k-${c}-${b}"></div><button class="kill" id="kill-${c}-${b}" aria-pressed="false" aria-label="Kill ${names[b]} on channel ${c}">Kill<kbd>${KEYS[c][i].toUpperCase()}</kbd></button></div>`).join("")}</div>
+    <div class="row"><span class="lbl">Filter</span><div class="knob" id="k-${c}-filter"></div><div class="filter-ends"><span>◂ LPF</span><span>HPF ▸</span></div></div>
+    <div class="fader-row"><div class="meter" id="m-${c}"></div><input type="range" class="fader" id="f-${c}" min="0" max="1" step="0.01" value="1" aria-label="Channel ${c} fader"></div>
+  </section>`;
+}
+const center = document.querySelector(".center");
+center.insertAdjacentHTML("beforebegin", stripHTML("A"));
+center.insertAdjacentHTML("afterend", stripHTML("B"));
+
+function buildMeter(el){ el.innerHTML = LED_DB.map((db, i) => `<span class="led ${i < 6 ? "g" : i < 10 ? "y" : "r"}"></span>`).join(""); return {leds:[...el.children], level:-90}; }
+const meters = {A:buildMeter($("#m-A")), B:buildMeter($("#m-B")), L:buildMeter($("#m-L")), R:buildMeter($("#m-R"))};
+
+const knobs = {};
+const kills = {};
+for(const c of ["A","B"]){
+  knobs[c + "trim"] = knob($(`#k-${c}-trim`), {min:-12, max:12, def:0, value:0, step:0.1, label:`Channel ${c} trim`, fmt:fmtDb, onChange:v => { state[c].trim = v; applyChannel(c); }});
+  for(const b of BANDS){
+    const el = $(`#k-${c}-${b}`);
+    knobs[c + b] = knob(el, {min:EQ_MIN, max:EQ_MAX, def:0, value:0, step:0.1, label:`Channel ${c} ${b} EQ`,
+      fmt:v => (v <= EQ_MIN || state[c].kill[b]) ? "KILL" : fmtDb(v),
+      onChange:v => { state[c][b] = v; el.classList.toggle("killed", v <= EQ_MIN || state[c].kill[b]); applyChannel(c); }});
+    const kb = $(`#kill-${c}-${b}`); kills[c + b] = kb;
+    kb.addEventListener("click", () => toggleKill(c, b));
+  }
+  knobs[c + "filter"] = knob($(`#k-${c}-filter`), {min:-1, max:1, def:0, value:0, step:0.005, label:`Channel ${c} filter`,
+    fmt:v => { const f = filterFreq(v); return f == null ? "OFF" : `${v < 0 ? "LP" : "HP"} ${fmtHz(f)}`; },
+    onChange:v => { state[c].filter = v; applyFilter(c); }});
+  const f = $(`#f-${c}`); f.addEventListener("input", () => { state[c].fader = parseFloat(f.value); applyChannel(c); });
+  f.addEventListener("dblclick", () => { f.value = 1; state[c].fader = 1; applyChannel(c); });
+}
+function toggleKill(c, b){
+  state[c].kill[b] = !state[c].kill[b];
+  kills[c + b].setAttribute("aria-pressed", state[c].kill[b]);
+  const el = $(`#k-${c}-${b}`); el.classList.toggle("killed", state[c].kill[b] || state[c][b] <= EQ_MIN);
+  knobs[c + b].render(); applyChannel(c);
+}
+knobs.master = knob($("#k-master"), {min:-40, max:6, def:-3, value:-3, step:0.1, label:"Master level", fmt:v => v <= -40 ? "MUTE" : fmtDb(v), onChange:v => { state.master = v; applyMaster(); }});
+knobs.fx = knob($("#k-fx"), {min:0, max:1, def:0.5, value:0.5, step:0.01, origin:0, label:"FX level", fmt:v => `LVL ${Math.round(v*100)}%`, onChange:v => { state.fx.depth = v; applyFx(); }});
+
+function seg(sel, fn){
+  const g = $(sel);
+  g.addEventListener("click", e => { const b = e.target.closest("button"); if(!b) return;
+    g.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b)); fn(b.dataset.v); });
+}
+seg("#fxType", v => { state.fx.type = v; applyFx(); });
+seg("#fxBeat", v => { state.fx.beat = parseFloat(v); applyFx(); });
+seg("#fxAssign", v => { state.fx.assign = v; applyFx(); });
+seg("#xfCurve", v => { state.curve = v; applyXf(); });
+function toggleFx(){ state.fx.on = !state.fx.on; $("#fxOn").setAttribute("aria-pressed", state.fx.on); if(state.fx.on) initAudio(); applyFx(); }
+$("#fxOn").addEventListener("click", toggleFx);
+const xf = $("#xf");
+xf.addEventListener("input", () => { let v = parseFloat(xf.value); if(Math.abs(v) < 0.04 && state.curve === "smooth") v = 0; state.xf = v; applyXf(); });
+xf.addEventListener("dblclick", () => { xf.value = 0; state.xf = 0; applyXf(); });
+
+document.addEventListener("keydown", e => {
+  if(e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
+  const t = e.target; if(t && (t.tagName === "INPUT" && t.type !== "range" || t.tagName === "TEXTAREA" || t.isContentEditable)) return;
+  const k = e.key.toLowerCase();
+  for(const c of ["A","B"]){ const i = KEYS[c].indexOf(k); if(i >= 0){ initAudio(); toggleKill(c, BANDS[i]); e.preventDefault(); return; } }
+  if(k === "z"){ decks.A.toggle(); e.preventDefault(); }
+  else if(k === "m"){ decks.B.toggle(); e.preventDefault(); }
+  else if(k === "f"){ toggleFx(); e.preventDefault(); }
+});
+
+/* ---------------- live input panel ---------------- */
+let liveTarget = "A";
+seg("#liveTarget", v => { liveTarget = v; });
+const isLoop = label => /blackhole|loopback|soundflower|vb-cable|background music/i.test(label || "");
+function liveNote(msg, warn){ const el = $("#liveNote"); el.textContent = msg || ""; el.classList.toggle("warn", !!warn); }
+
+async function refreshDevices(){
+  const md = navigator.mediaDevices; if(!md || !md.enumerateDevices) return [];
+  let list = []; try{ list = await md.enumerateDevices(); }catch(e){ return []; }
+  const fill = (sel, kind, firstLabel) => {
+    const keep = sel.value, opts = list.filter(d => d.kind === kind && d.deviceId !== "default" && d.deviceId !== "communications");
+    sel.innerHTML = `<option value="">${firstLabel}</option>` + opts.map((d, i) => `<option value="${d.deviceId}">${(d.label || `${kind === "audioinput" ? "Input" : "Output"} ${i+1}`).replace(/</g, "&lt;")}</option>`).join("");
+    if([...sel.options].some(o => o.value === keep)) sel.value = keep;
+    return opts;
+  };
+  const ins = fill($("#inDev"), "audioinput", "Default input");
+  const outs = fill($("#outDev"), "audiooutput", "System default");
+  // sensible picks: loopback driver in, real speakers out
+  if(!$("#inDev").value){ const bh = ins.find(d => isLoop(d.label)); if(bh) $("#inDev").value = bh.deviceId; }
+  if(!$("#outDev").value && isLoop(($("#inDev").selectedOptions[0] || {}).text)){
+    const spk = outs.find(d => !isLoop(d.label) && /speaker|headphone|airpods|built-in/i.test(d.label)) || outs.find(d => !isLoop(d.label));
+    if(spk){ $("#outDev").value = spk.deviceId; await setOutput(spk.deviceId); }
+  }
+  return list;
+}
+async function setOutput(id){
+  initAudio();
+  if(typeof ctx.setSinkId !== "function"){ liveNote("This browser can't choose an output device. Use Chrome or the Booth Mixer app.", true); return; }
+  try{ await ctx.setSinkId(id || ""); checkFeedback(); }
+  catch(e){ liveNote(`Couldn't switch output: ${e.message || e.name}`, true); }
+}
+function checkFeedback(){
+  const inLabel = (decks.A.mode === "live" || decks.B.mode === "live") ? ($("#inDev").selectedOptions[0] || {}).text || "" : "";
+  const outSel = $("#outDev"), outLabel = outSel.value ? outSel.selectedOptions[0].text : "";
+  if(isLoop(inLabel) && (!outSel.value || isLoop(outLabel))) liveNote("Set Output to your speakers or headphones. Otherwise the mixer plays back into BlackHole and feeds back on itself.", true);
+  else if(isLoop(inLabel)) liveNote(`Routing ${inLabel} → mixer → ${outLabel}. Play Spotify and go.`);
+  else liveNote(IN_FRAME && !IS_APP ? "Live capture is blocked inside Claude's viewer. Use the Booth Mixer app or the standalone file in Chrome." : "");
+}
+$("#grabTab").addEventListener("click", () => decks[liveTarget].startLive("tab"));
+$("#useIn").addEventListener("click", async () => {
+  const d = decks[liveTarget];
+  const ok = await d.startLive("mic", $("#inDev").value);
+  if(ok && !isLoop(d.name)){
+    const list = await refreshDevices();
+    if(list.some(x => x.kind === "audioinput" && isLoop(x.label))) liveNote("BlackHole is installed. Pick it as Input and press Use input to mix your Mac's sound.");
+  }
+});
+$("#inDev").addEventListener("change", () => checkFeedback());
+$("#outDev").addEventListener("change", e => setOutput(e.target.value));
+
+// tap tempo
+let taps = [];
+function tap(){
+  const now = performance.now(); taps = taps.filter(t => now - t < 2500); taps.push(now);
+  if(taps.length >= 3){ const iv = (taps[taps.length-1] - taps[0]) / (taps.length - 1); state.tapBpm = clamp(60000 / iv, 60, 200); }
+  $("#tap").firstChild.nodeValue = state.tapBpm ? `${state.tapBpm.toFixed(1)}` : `Tap ${taps.length}`;
+  applyFx();
+}
+$("#tap").addEventListener("click", tap);
+document.addEventListener("keydown", e => { if(e.key.toLowerCase() === "t" && !e.metaKey && !e.ctrlKey && !e.altKey && !e.repeat && !(e.target && e.target.tagName === "SELECT")){ tap(); } });
+
+async function bootLive(){
+  if(IS_APP){
+    document.body.classList.add("app");
+    $("#grabTab").closest(".route").hidden = true;
+    const r2 = $("#useIn").closest(".route");
+    r2.querySelector("h2").innerHTML = `<span class="step">Your Mac's sound</span>Spotify app, or anything playing`;
+    r2.querySelector("p").innerHTML = `Set your Mac's sound output to <b>BlackHole 2ch</b> (Control Centre › Sound). Booth Mixer listens to BlackHole and plays the result out of the Output below. No BlackHole yet? Run <code>brew install blackhole-2ch</code> or get it from <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener">existential.audio</a>.`;
+    // unlock device names, then auto-connect if BlackHole is present
+    try{ const s = await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t => t.stop()); }catch(e){ liveNote(blockedMsg("mic"), true); return; }
+    const list = await refreshDevices();
+    if(list.some(x => x.kind === "audioinput" && isLoop(x.label))){ await decks.A.startLive("mic", $("#inDev").value); }
+    else liveNote("BlackHole isn't installed yet. Install it, set your Mac's output to BlackHole 2ch, then press Use input.", true);
+  } else {
+    refreshDevices(); checkFeedback();
+  }
+}
+
+/* ---------------- drawing ---------------- */
+const COL = {};
+function readColors(){ ["--deck-a","--deck-b","--ink","--dim","--faint","--well","--edge","--led-r","--panel-hi"].forEach(n => COL[n] = css(n)); }
+function fit(cv){ const dpr = Math.min(2, window.devicePixelRatio || 1), w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+  if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; return true; } return false; }
+
+const td = new Float32Array(1024);
+function drawWave(d){
+  const cv = $(`#wave${d.id}`), resized = fit(cv), g = cv.getContext("2d"), W = cv.width, H = cv.height, dpr = W / cv.clientWidth;
+  const color = COL[d.id === "A" ? "--deck-a" : "--deck-b"];
+  if(d.mode === "live"){
+    g.clearRect(0, 0, W, H);
+    if(ctx){ G.ch[d.id].meter.getFloatTimeDomainData(td); g.strokeStyle = color; g.lineWidth = 1.5 * dpr; g.beginPath();
+      for(let i = 0; i < td.length; i++){ const x = i / (td.length - 1) * W, y = H/2 - td[i] * H * 0.45; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); }
+    g.fillStyle = COL["--led-r"]; g.font = `600 ${11*dpr}px ${css("--f-label")}`; g.fillText(d.liveMuted ? "LIVE · MUTED" : "LIVE", 8*dpr, 16*dpr);
+    return;
+  }
+  if(!d.dirty && !d.playing && !resized) return;
+  d.dirty = false;
+  g.clearRect(0, 0, W, H);
+  if(!d.peaks){ return; }
+  const pos = d.duration ? d.position() / d.duration : 0, px = pos * W;
+  // beat grid
+  if(d.bpm){ const beats = d.duration / (60 / d.bpm);
+    for(let b = 0; b <= beats; b++){ const x = Math.round(b / beats * W) + 0.5; g.fillStyle = b % 4 === 0 ? COL["--edge"] : COL["--panel-hi"]; g.fillRect(x, 0, b % 4 === 0 ? dpr : 1, H); } }
+  const n = d.peaks.length, bw = Math.max(1, Math.floor(2 * dpr));
+  for(let x = 0; x < W; x += bw + 1){
+    const i = Math.floor(x / W * n), v = d.peaks[i], h = Math.max(1, v * H * 0.92);
+    g.fillStyle = x < px ? color : COL["--faint"]; g.fillRect(x, (H - h) / 2, bw, h);
+  }
+  g.fillStyle = COL["--ink"]; g.fillRect(Math.round(px), 0, Math.max(1, Math.round(dpr * 1.5)), H);
+}
+
+const specData = new Uint8Array(2048);
+const FMIN = 30, FMAX = 18000;
+const fx2 = (f, W) => Math.log(f / FMIN) / Math.log(FMAX / FMIN) * W;
+let specIdleDrawn = false;
+function drawSpec(){
+  const cv = $("#spec"), resized = fit(cv), g = cv.getContext("2d"), W = cv.width, H = cv.height, dpr = W / cv.clientWidth;
+  if(!ctx && specIdleDrawn && !resized) return;
+  specIdleDrawn = true;
+  g.clearRect(0, 0, W, H);
+  const top = 18 * dpr, bot = H - 18 * dpr, ph = bot - top;
+  // band regions
+  const x1 = fx2(F1, W), x2 = fx2(F2, W);
+  g.fillStyle = COL["--edge"]; g.fillRect(Math.round(x1), top, dpr, ph); g.fillRect(Math.round(x2), top, dpr, ph);
+  g.font = `600 ${11*dpr}px ${css("--f-label")}`; g.textBaseline = "middle"; g.textAlign = "center";
+  const bandKilled = b => state.A.kill[b] && state.B.kill[b];
+  [["LOW", 0, x1, "low"], ["MID", x1, x2, "mid"], ["HIGH", x2, W, "hi"]].forEach(([t, a, b, k]) => {
+    const anyKill = state.A.kill[k] || state.B.kill[k];
+    g.fillStyle = anyKill ? COL["--led-r"] : COL["--dim"]; g.fillText(anyKill ? `${t} · KILL ${state.A.kill[k] ? "A" : ""}${state.A.kill[k] && state.B.kill[k] ? "+" : ""}${state.B.kill[k] ? "B" : ""}` : t, (a + b) / 2, 9 * dpr);
+  });
+  g.fillStyle = COL["--faint"]; g.font = `${9.5*dpr}px ${css("--f-mono")}`;
+  [50, 100, 250, 500, 1000, 3000, 6000, 12000].forEach(f => { const x = fx2(f, W); g.textAlign = "center"; g.fillText(fmtHz(f), clamp(x, 12*dpr, W - 12*dpr), H - 8 * dpr); });
+  if(!ctx){
+    g.fillStyle = COL["--dim"]; g.font = `${12*dpr}px ${css("--f-mono")}`; g.textAlign = "center";
+    g.fillText("Master spectrum appears when audio plays", W / 2, top + ph / 2); return;
+  }
+  G.spec.getByteFrequencyData(specData);
+  const bins = G.spec.frequencyBinCount, ny = ctx.sampleRate / 2;
+  const grad = g.createLinearGradient(0, 0, W, 0);
+  grad.addColorStop(0, COL["--deck-a"]); grad.addColorStop(1, COL["--deck-b"]);
+  g.beginPath(); g.moveTo(0, bot);
+  for(let x = 0; x <= W; x += 2){
+    const f = FMIN * Math.pow(FMAX / FMIN, x / W), i = Math.min(bins - 1, Math.round(f / ny * bins));
+    let v = specData[i]; if(i > 2){ v = Math.max(v, specData[i-1], specData[i+1]); }
+    g.lineTo(x, bot - (v / 255) * ph);
+  }
+  g.lineTo(W, bot); g.closePath();
+  g.globalAlpha = 0.28; g.fillStyle = grad; g.fill(); g.globalAlpha = 1;
+  g.strokeStyle = grad; g.lineWidth = 1.5 * dpr; g.stroke();
+}
+
+function peakDb(an){ an.getFloatTimeDomainData(td); let m = 0; for(let i = 0; i < td.length; i++){ const a = Math.abs(td[i]); if(a > m) m = a; } return m > 0 ? 20 * Math.log10(m) : -90; }
+function setMeter(mt, db){
+  mt.level = Math.max(db, mt.level - 1.1);
+  for(let i = 0; i < LED_DB.length; i++){ const on = mt.level >= LED_DB[i] - (i === LED_DB.length - 1 ? 0.05 : 0); if(mt.leds[i]._on !== on){ mt.leds[i].classList.toggle("on", on); mt.leds[i]._on = on; } }
+}
+
+function frame(){
+  for(const id of ["A","B"]){
+    const d = decks[id];
+    drawWave(d);
+    if(d.mode === "buffer"){
+      const p = d.position();
+      $(`#time${id}`).firstChild.nodeValue = fmtTime(p);
+      $(`#time${id}`).lastChild.textContent = `/ ${fmtTime(d.duration)}`;
+    } else { $(`#time${id}`).firstChild.nodeValue = "LIVE"; $(`#time${id}`).lastChild.textContent = "input"; }
+  }
+  if(ctx){
+    setMeter(meters.A, peakDb(G.ch.A.meter)); setMeter(meters.B, peakDb(G.ch.B.meter));
+    setMeter(meters.L, peakDb(G.mL)); setMeter(meters.R, peakDb(G.mR));
+    $("#limitLed").classList.toggle("hot", G.limiter.reduction < -1);
+  }
+  drawSpec();
+  requestAnimationFrame(frame);
+}
+
+/* ---------------- boot ---------------- */
+readColors();
+wireDeck("A"); wireDeck("B");
+renderDeckUI(decks.A); renderDeckUI(decks.B);
+applyFx();
+const redrawAll = () => { decks.A.dirty = decks.B.dirty = true; specIdleDrawn = false; };
+window.addEventListener("resize", redrawAll);
+if(document.fonts && document.fonts.ready) document.fonts.ready.then(redrawAll);
+requestAnimationFrame(frame);
+(async () => {
+  try{
+    const [a, b] = await Promise.all([demoBuf("groove"), demoBuf("stabs")]);
+    decks.A.load(a, DEMO_NAMES.groove, DEMO_BPM, "groove");
+    decks.B.load(b, DEMO_NAMES.stabs, DEMO_BPM, "stabs");
+    decks.A.status("Demo loaded. Press Play, then bring in deck B.");
+  }catch(e){ for(const d of [decks.A, decks.B]){ $(`#track${d.id}`).textContent = "Empty deck"; d.status("Demo couldn't render in this browser. Load a track instead.", true); } }
+  bootLive();
+})();
+})();
+</script>
+
+</body></html>
