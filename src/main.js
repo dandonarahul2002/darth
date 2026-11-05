@@ -1,3 +1,4 @@
+const path = require('path');
 const { app, BrowserWindow, session, systemPreferences, shell } = require('electron');
 
 // let the mixer start audio without a click
@@ -6,10 +7,10 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 920, minWidth: 440, minHeight: 520,
-    backgroundColor: '#121211', title: 'Booth Mixer',
+    backgroundColor: '#121211', title: 'Darth',
     webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false }
   });
-  win.loadFile('index.html');
+  win.loadFile(path.join(__dirname, 'index.html'));
   // open links in the real browser
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (/^https?:/.test(url)) shell.openExternal(url);

@@ -1,0 +1,19 @@
+{
+  "name": "darth",
+  "productName": "Darth",
+  "version": "1.0.0",
+  "description": "A DJ mixer for whatever your Mac is playing: isolator EQ, punch-in FX and a tape delay, live on Spotify or any app.",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "bash scripts/build-mac.sh",
+    "dist": "bash scripts/build-mac.sh --no-install"
+  },
+  "keywords": ["dj", "mixer", "web-audio", "electron", "macos", "blackhole", "eq", "delay", "spotify"],
+  "author": "Rahul Dandona",
+  "license": "MIT",
+  "devDependencies": {
+    "@electron/packager": "18.3.6",
+    "electron": "33.2.1"
+  }
+}

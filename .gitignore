@@ -1,6 +1,4 @@
-# build output
-booth-mixer/dist/
-booth-mixer/dmg-stage/
-*.dmg
+dist/
 node_modules/
+*.dmg
 .DS_Store

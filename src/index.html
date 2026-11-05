@@ -1,13 +1,13 @@
 <!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0}[hidden]{display:none!important}</style></head><body>
-<title>Booth Mixer</title>
+<title>darth</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="color-scheme" content="dark light">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
 <style>
-/* Booth Mixer — calm, flat instrument UI.
+/* darth — calm, flat instrument UI.
    Layout: device bar, two decks, then the mixer face: strip A | center (spectrum, master, beat FX, [punch FX], crossfader) | strip B.
 
    DESIGN TOKENS
@@ -277,7 +277,7 @@ canvas#spec{width:100%;height:150px;display:block;background:var(--well);border-
 
 <div class="wrap">
   <header class="top">
-    <div class="brand"><h1>Booth Mixer</h1><span class="plate">BM-2 · two-channel isolator</span></div>
+    <div class="brand"><h1>darth</h1><span class="plate">two-deck isolator · punch fx · keinedelay</span></div>
     <div class="engine"><span class="dot" id="engDot"></span><span id="engTxt">Engine idle · press Play on a deck</span></div>
   </header>
 
@@ -704,7 +704,7 @@ class Deck{
 const IS_APP = /Electron/i.test(navigator.userAgent);
 const IN_FRAME = (() => { try{ return window.self !== window.top; }catch(e){ return true; } })();
 function blockedMsg(kind){
-  if(IS_APP) return "Audio input was blocked. Allow Booth Mixer in System Settings › Privacy & Security › Microphone, then relaunch it.";
+  if(IS_APP) return "Audio input was blocked. Allow Darth in System Settings › Privacy & Security › Microphone, then relaunch it.";
   return kind === "tab"
     ? "Tab capture was blocked. Claude's viewer doesn't allow it, so open the standalone copy of this mixer in Chrome to mix a live tab."
     : "Microphone access was blocked here. Open the standalone copy in Chrome to use a mic or line-in.";
@@ -943,7 +943,7 @@ async function refreshDevices(){
 }
 async function setOutput(id){
   initAudio();
-  if(typeof ctx.setSinkId !== "function"){ liveNote("This browser can't choose an output device. Use Chrome or the Booth Mixer app.", true); return; }
+  if(typeof ctx.setSinkId !== "function"){ liveNote("This browser can't choose an output device. Use Chrome or the Darth app.", true); return; }
   try{ await ctx.setSinkId(id || ""); checkFeedback(); }
   catch(e){ liveNote(`Couldn't switch output: ${e.message || e.name}`, true); }
 }
@@ -952,7 +952,7 @@ function checkFeedback(){
   const outSel = $("#outDev"), outLabel = outSel.value ? outSel.selectedOptions[0].text : "";
   if(isLoop(inLabel) && (!outSel.value || isLoop(outLabel))) liveNote("Set Output to your speakers or headphones. Otherwise the mixer plays back into BlackHole and feeds back on itself.", true);
   else if(isLoop(inLabel)) liveNote(`Routing ${inLabel} → mixer → ${outLabel}. Play Spotify and go.`);
-  else liveNote(IN_FRAME && !IS_APP ? "Live capture is blocked inside Claude's viewer. Use the Booth Mixer app or the standalone file in Chrome." : "");
+  else liveNote(IN_FRAME && !IS_APP ? "Live capture is blocked inside this embedded viewer. Use the Darth app or the standalone file in Chrome." : "");
 }
 $("#grabTab").addEventListener("click", () => decks[liveTarget].startLive("tab"));
 $("#useIn").addEventListener("click", async () => {
@@ -984,7 +984,7 @@ async function bootLive(){
   if(IS_APP){
     document.body.classList.add("app");
     $("#grabTab").closest(".route").hidden = true;
-    $("#routeHelp").innerHTML = `<p><b>Spotify app, or anything playing.</b> Set your Mac's sound output to <b>BlackHole 2ch</b> (Control Centre › Sound). Booth Mixer listens to BlackHole and plays the result out of the Out device. No BlackHole yet? Run <code>brew install blackhole-2ch</code> or get it from <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener">existential.audio</a>.</p>`;
+    $("#routeHelp").innerHTML = `<p><b>Spotify app, or anything playing.</b> Set your Mac's sound output to <b>BlackHole 2ch</b> (Control Centre › Sound). Darth listens to BlackHole and plays the result out of the Out device. No BlackHole yet? Run <code>brew install blackhole-2ch</code> or get it from <a href="https://existential.audio/blackhole/" target="_blank" rel="noopener">existential.audio</a>.</p>`;
     // unlock device names, then auto-connect if BlackHole is present
     try{ const s = await navigator.mediaDevices.getUserMedia({audio:true}); s.getTracks().forEach(t => t.stop()); }catch(e){ liveNote(blockedMsg("mic"), true); return; }
     const list = await refreshDevices();

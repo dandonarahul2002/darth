@@ -1,9 +1,0 @@
-{
-  "name": "booth-mixer",
-  "productName": "Booth Mixer",
-  "version": "1.0.0",
-  "description": "Two-deck DJ mixer for your Mac's sound",
-  "main": "main.js",
-  "author": "Rahul Dandona",
-  "license": "MIT"
-}
