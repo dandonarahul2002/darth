@@ -16,7 +16,7 @@ darth is a single-file Web Audio instrument wrapped in a small Electron app for 
 
 ## Install
 
-Grab `Darth.dmg` from [Releases](../../releases), open it and drag **Darth** into Applications.
+Grab `Darth.dmg` from [Releases](https://github.com/dandonarahul2002/darth/releases/latest), open it and drag **Darth** into Applications.
 
 The build is ad-hoc signed, not notarized, so the first launch is blocked by Gatekeeper. Either right-click the app › **Open**, or run:
 
@@ -57,7 +57,7 @@ See [docs/GUIDE.md](docs/GUIDE.md) for a tour of each section and some tricks.
 ## Develop
 
 ```sh
-git clone https://github.com/<you>/darth && cd darth
+git clone https://github.com/dandonarahul2002/darth && cd darth
 npm install
 npm start          # run the app
 npm run build      # package, sign ad-hoc, make dist/Darth.dmg, install to /Applications
